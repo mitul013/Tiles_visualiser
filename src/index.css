@@ -1650,7 +1650,8 @@ input[type='range'] {
   margin: 0 auto;
 }
 .editor-stage img,
-.editor-stage svg {
+.editor-stage svg,
+.editor-stage canvas.obj-mask {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -1793,4 +1794,7 @@ input[type='range'] {
   .nav-links a {
     display: none;
   }
+}
+.editor-stage canvas.obj-mask {
+  opacity: 0.45;
 }

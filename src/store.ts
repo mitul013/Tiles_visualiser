@@ -21,6 +21,12 @@ export interface PhotoRoom {
   width: number
   height: number
   surfaces: PhotoSurface[]
+  /**
+   * Foreground-object layer: PNG (same size as the photo) whose opaque pixels mark objects that
+   * stand in front of the surfaces (furniture, taps, plants, window frames). Those photo pixels are
+   * composited back on top of the tiles, so new tiles never cover them.
+   */
+  objMask?: string
   createdAt: number
 }
 

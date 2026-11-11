@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useStore, type PhotoSurface } from '../store'
 import type { SurfaceType } from '../types'
 import { Icon, Modal, toast } from './ui'
+import { refineMaskCanvas } from '../lib/objectMask'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
@@ -23,6 +24,70 @@ export default function UploadRoomModal() {
   const [surfaces, setSurfaces] = useState<PhotoSurface[]>([])
   const [active, setActive] = useState<string | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
+  const maskRef = useRef<HTMLCanvasElement>(null)
+  const [mode, setMode] = useState<'surfaces' | 'objects'>('surfaces')
+  const [brush, setBrush] = useState(28)
+  const [erase, setErase] = useState(false)
+  const [hasMask, setHasMask] = useState(false)
+  const [snap, setSnap] = useState(true)
+  const [busy, setBusy] = useState(false)
+  /** the user's rough strokes; the visible mask is these strokes snapped to object outlines */
+  const roughRef = useRef<HTMLCanvasElement | null>(null)
+  const photoRef = useRef<HTMLImageElement | null>(null)
+  const painting = useRef(false)
+  const rough = () => {
+    const cv = maskRef.current!
+    if (!roughRef.current || roughRef.current.width !== cv.width) {
+      roughRef.current = document.createElement('canvas')
+      roughRef.current.width = cv.width
+      roughRef.current.height = cv.height
+    }
+    return roughRef.current
+  }
+  const finishStroke = async () => {
+    const cv = maskRef.current
+    if (!cv || !img) return
+    const ctx = cv.getContext('2d')!
+    if (!snap) {
+      ctx.clearRect(0, 0, cv.width, cv.height)
+      ctx.drawImage(rough(), 0, 0)
+      return
+    }
+    setBusy(true)
+    await new Promise((r) => setTimeout(r, 20))
+    if (!photoRef.current || photoRef.current.src !== img.src) {
+      photoRef.current = new Image()
+      photoRef.current.src = img.src
+      await photoRef.current.decode()
+    }
+    const quads = surfaces.map((sf) => sf.quad.map(([x, y]) => [x * cv.width, y * cv.height] as [number, number]))
+    const refined = refineMaskCanvas(photoRef.current, rough(), cv.width, cv.height, quads)
+    ctx.clearRect(0, 0, cv.width, cv.height)
+    ctx.drawImage(refined, 0, 0)
+    setBusy(false)
+  }
+  const last = useRef<[number, number] | null>(null)
+  const paint = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const cv = maskRef.current
+    if (!cv) return
+    const r = cv.getBoundingClientRect()
+    const x = ((e.clientX - r.left) / r.width) * cv.width
+    const y = ((e.clientY - r.top) / r.height) * cv.height
+    const size = (brush / r.width) * cv.width
+    const [lx, ly] = last.current ?? [x, y]
+    for (const ctx of [cv.getContext('2d')!, rough().getContext('2d')!]) {
+      ctx.globalCompositeOperation = erase ? 'destination-out' : 'source-over'
+      ctx.strokeStyle = ctx.fillStyle = 'rgba(255,40,120,1)'
+      ctx.lineCap = 'round'
+      ctx.lineWidth = size
+      ctx.beginPath()
+      ctx.moveTo(lx, ly)
+      ctx.lineTo(x, y)
+      ctx.stroke()
+    }
+    last.current = [x, y]
+    if (!erase) setHasMask(true)
+  }
   const drag = useRef<{ sid: string; idx: number } | null>(null)
 
   const onFile = (f?: File) => {
@@ -62,7 +127,8 @@ export default function UploadRoomModal() {
   const save = () => {
     if (!img) return
     const id = `photo-${uid()}`
-    addRoom({ id, name, image: img.src, width: img.w, height: img.h, surfaces, createdAt: Date.now() })
+    const objMask = hasMask && maskRef.current ? maskRef.current.toDataURL('image/png') : undefined
+    addRoom({ id, name, image: img.src, width: img.w, height: img.h, surfaces, objMask, createdAt: Date.now() })
     openRoom(id, {})
     useStore.getState().select(surfaces.filter((s) => s.type === 'floor').map((s) => s.id).slice(0, 1))
     close()
@@ -111,7 +177,27 @@ export default function UploadRoomModal() {
         <div className="room-editor">
           <div className="editor-stage" style={{ aspectRatio: `${img.w} / ${img.h}` }}>
             <img src={img.src} alt="room" draggable={false} />
+            <canvas
+              ref={maskRef}
+              width={img.w}
+              height={img.h}
+              className="obj-mask"
+              style={{ pointerEvents: mode === 'objects' ? 'auto' : 'none', cursor: mode === 'objects' ? 'crosshair' : 'default' }}
+              onPointerDown={(e) => {
+                painting.current = true
+                last.current = null
+                e.currentTarget.setPointerCapture(e.pointerId)
+                paint(e)
+              }}
+              onPointerMove={(e) => painting.current && paint(e)}
+              onPointerUp={() => {
+                painting.current = false
+                last.current = null
+                void finishStroke()
+              }}
+            />
             <svg
+              style={{ pointerEvents: mode === 'surfaces' ? 'auto' : 'none' }}
               ref={svgRef}
               viewBox="0 0 1000 1000"
               preserveAspectRatio="none"
@@ -151,6 +237,44 @@ export default function UploadRoomModal() {
             </svg>
           </div>
           <div className="editor-side">
+            <div className="seg">
+              <button className={mode === 'surfaces' ? 'on' : ''} onClick={() => setMode('surfaces')}>
+                1. Surfaces
+              </button>
+              <button className={mode === 'objects' ? 'on' : ''} onClick={() => setMode('objects')}>
+                2. Objects in front
+              </button>
+            </div>
+            {mode === 'objects' ? (
+              <>
+                <p className="hint">Roughly paint over anything standing in front of the floor or walls (sofa, bed, taps, plants, window frames). The outline is detected automatically and those pixels stay on top, untouched, whatever tiles or colours you apply.</p>
+                <label className="inline">
+                  Brush <input type="range" min={6} max={90} value={brush} onChange={(e) => setBrush(Number(e.target.value))} />
+                </label>
+                <div className="seg">
+                  <button className={!erase ? 'on' : ''} onClick={() => setErase(false)}>
+                    Paint
+                  </button>
+                  <button className={erase ? 'on' : ''} onClick={() => setErase(true)}>
+                    Erase
+                  </button>
+                </div>
+                <label className="check">
+                  <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> Snap to object edges (paint roughly, we follow the outline)
+                </label>
+                {busy && <span className="hint">Finding object edges…</span>}
+                <button
+                  className="btn sm"
+                  onClick={() => {
+                    for (const cv of [maskRef.current, roughRef.current]) cv?.getContext('2d')!.clearRect(0, 0, cv.width, cv.height)
+                    setHasMask(false)
+                  }}
+                >
+                  Clear objects
+                </button>
+              </>
+            ) : (
+              <>
             <p className="hint">Drag the 4 white corners of each surface onto its real corners in the photo (top-left, top-right, bottom-right, bottom-left). Enter the real size so tiles render at the right scale.</p>
             <div className="chips">
               {(Object.keys(PRESET) as SurfaceType[]).map((t) => (
@@ -188,6 +312,8 @@ export default function UploadRoomModal() {
                   <input type="number" min={0.2} step={0.1} value={act.size[1]} onChange={(e) => patch(act.id, { size: [act.size[0], Number(e.target.value) || 0.2] })} />
                 </label>
               </div>
+            )}
+              </>
             )}
           </div>
         </div>

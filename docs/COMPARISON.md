@@ -54,11 +54,22 @@ npm run compare            # → test-fixtures/report/index.html
 | **Bug**: Vertical Stack left gaps between rows | Fixed |
 | **Bug**: capture/catalog/download broke after switching from a 3D room to a photo room | Fixed (each scene only clears its own capture hook) |
 
+## Round 2: objects in front of surfaces (the reference's `obj_mask` technique)
+
+Each case marks the objects in front of the surface (sofa, plants, taps, bathtub…) with a rough box.
+The box is snapped to the object's outline, and those photo pixels are drawn back on top of the tiles.
+
+- Without an object layer, objects were tiled over (mean pixel change on objects: 21–56).
+- With rectangle masks, objects were kept but a box of the old surface stayed around them.
+- With **snapped outlines**, objects keep their exact pixels and the surface around them is re-tiled.
+  Check `objects-snap.jpg` in the local report. Very small or thin objects (bottles, a shower head)
+  can be missed on these 201 px samples. Repaint them, or turn snapping off for a hard brush.
+
 ## Known differences that remain
 
 - References are AI/photoreal renders with global illumination; our 3D rooms are real-time and
   stylised. Photo re-tiles are the closest like-for-like comparison.
-- Objects standing in front of a marked surface are tiled over (no automatic segmentation).
+- Object outlines come from a rough brush plus colour segmentation, not an AI model, so objects with the same colour as the surface behind them may need a manual touch-up.
 - The old surface's strongest texture (e.g. dark marble veins) can faintly show through in photo
   re-tiles, because light and texture can't be separated perfectly from a single photo.
 - Glossy reflections are simulated in 3D only; photo re-tiles get a sheen, not true reflections.

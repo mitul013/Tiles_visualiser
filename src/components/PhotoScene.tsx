@@ -67,6 +67,41 @@ function applyShading(lc: CanvasRenderingContext2D, s: Shading) {
   lc.putImageData(img, s.x0, s.y0)
 }
 
+function featherMask(q: Pt[], W: number, H: number) {
+  const c = document.createElement('canvas')
+  c.width = W
+  c.height = H
+  const ctx = c.getContext('2d')!
+  ctx.filter = `blur(${Math.max(0.6, W / 1400)}px)`
+  quadPath(ctx, q)
+  ctx.fillStyle = '#000'
+  ctx.fill()
+  return c
+}
+
+const objLayerCache = new Map<string, Promise<HTMLCanvasElement>>()
+/** Photo pixels inside the object mask (with a slightly softened edge), ready to draw over the tiles. */
+function objectLayer(photo: HTMLImageElement, mask: string, W: number, H: number) {
+  const key = `${photo.src.length}:${mask.length}:${mask.slice(-64)}`
+  let p = objLayerCache.get(key)
+  if (!p) {
+    p = loadImage(mask).then((m) => {
+      const c = document.createElement('canvas')
+      c.width = W
+      c.height = H
+      const ctx = c.getContext('2d')!
+      ctx.filter = `blur(${Math.max(0.5, W / 1600)}px)`
+      ctx.drawImage(m, 0, 0, W, H)
+      ctx.filter = 'none'
+      ctx.globalCompositeOperation = 'source-in'
+      ctx.drawImage(photo, 0, 0, W, H)
+      return c
+    })
+    objLayerCache.set(key, p)
+  }
+  return p
+}
+
 async function surfaceImage(app: Application, size: [number, number]) {
   if (app.kind === 'tile') {
     const p = findProduct(app.productId)
@@ -139,11 +174,15 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
           lc.fillStyle = g
           lc.fillRect(0, 0, W, H)
         }
+        // feathered surface mask: soft 1-2px edge instead of a hard polygon cut
         lc.globalCompositeOperation = 'destination-in'
-        quadPath(lc, l.q)
-        lc.fillStyle = '#000'
-        lc.fill()
+        lc.drawImage(featherMask(l.q, W, H), 0, 0)
         ctx.drawImage(layer, 0, 0)
+      }
+      // foreground objects go back on top of every new surface
+      if (room.objMask) {
+        const objs = await objectLayer(photo, room.objMask, W, H)
+        ctx.drawImage(objs, 0, 0)
       }
       const tint = TINT[theme]
       if (tint) {
@@ -155,7 +194,7 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applied, theme, room.id])
+  }, [applied, theme, room.id, room.objMask])
 
   // selection overlay
   useEffect(() => {

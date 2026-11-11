@@ -13,7 +13,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const dir = path.resolve(process.argv[2] ?? 'test-fixtures')
-const out = path.join(dir, 'report')
+const out = process.env.OUT_DIR ? path.resolve(process.env.OUT_DIR) : path.join(dir, 'report')
 const base = process.env.BASE_URL ?? 'http://localhost:4173/'
 const only = process.env.ONLY?.split(',')
 const { cases } = JSON.parse(fs.readFileSync(path.join(dir, 'cases.json'), 'utf8'))
@@ -29,6 +29,8 @@ const saveDataUrl = (url, f) => fs.writeFileSync(path.join(out, f), Buffer.from(
   page.on('pageerror', (e) => errors.push(e.message))
   await page.goto(`${base}?harness`)
   await page.waitForFunction(() => window.__tv)
+  if (process.env.NO_OBJECTS) await page.evaluate(() => (window.__noObjects = true))
+  if (process.env.NO_SNAP) await page.evaluate(() => (window.__noSnap = true))
   const results = []
 
   for (const c of cases) {
@@ -63,12 +65,34 @@ const saveDataUrl = (url, f) => fs.writeFileSync(path.join(out, f), Buffer.from(
       return [im.naturalWidth, im.naturalHeight]
     }, ref)
     await page.evaluate(
-      ({ c, ref, dims, app }) => {
+      async ({ c, ref, dims, app }) => {
         const { useStore } = window.__tv
         const s = useStore.getState()
         const id = `photo-test-${c.id}`
         s.removePhotoRoom(id)
-        s.addPhotoRoom({ id, name: `Test ${c.id}`, image: ref, width: dims[0], height: dims[1], createdAt: Date.now(), surfaces: [{ id: 's1', label: c.photo.type, type: c.photo.type, quad: c.photo.quad, size: c.photo.size }] })
+        let objMask
+        if (c.photo.objects?.length && !window.__noObjects) {
+          // "objects in front" layer, as a user would paint it with the brush
+          const cv = document.createElement('canvas')
+          cv.width = dims[0]
+          cv.height = dims[1]
+          const ctx = cv.getContext('2d')
+          ctx.fillStyle = '#ff2878'
+          for (const poly of c.photo.objects) {
+            ctx.beginPath()
+            poly.forEach(([x, y], i) => (i ? ctx.lineTo(x * dims[0], y * dims[1]) : ctx.moveTo(x * dims[0], y * dims[1])))
+            ctx.fill()
+          }
+          if (!window.__noSnap) {
+            // snap the rough boxes to the real object outlines (same as the editor's smart brush)
+            const im = new Image()
+            im.src = ref
+            await im.decode()
+            const quadPx = c.photo.quad.map(([x, y]) => [x * dims[0], y * dims[1]])
+            objMask = window.__tv.refineMaskCanvas(im, cv, dims[0], dims[1], [quadPx]).toDataURL('image/png')
+          } else objMask = cv.toDataURL('image/png')
+        }
+        s.addPhotoRoom({ id, name: `Test ${c.id}`, image: ref, width: dims[0], height: dims[1], createdAt: Date.now(), objMask, surfaces: [{ id: 's1', label: c.photo.type, type: c.photo.type, quad: c.photo.quad, size: c.photo.size }] })
         useStore.setState({ originalShot: 'x' })
         s.openRoom(id, { s1: app })
         useStore.setState({ selected: [] })
@@ -87,7 +111,7 @@ const saveDataUrl = (url, f) => fs.writeFileSync(path.join(out, f), Buffer.from(
 
     // metrics between reference and our re-tile, inside / outside the marked quad
     const m = await page.evaluate(
-      async ({ ref, ours, quad }) => {
+      async ({ ref, ours, quad, objects }) => {
         const load = async (src) => {
           const im = new Image()
           im.src = src
@@ -109,17 +133,25 @@ const saveDataUrl = (url, f) => fs.writeFileSync(path.join(out, f), Buffer.from(
           for (let i = 0; i < W * H; i++) L[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]
           return L
         }
-        const mask = (() => {
+        const polyMask = (polys) => {
           const cv = document.createElement('canvas')
           cv.width = W
           cv.height = H
           const ctx = cv.getContext('2d')
-          ctx.beginPath()
-          quad.forEach(([x, y], i) => (i ? ctx.lineTo(x * W, y * H) : ctx.moveTo(x * W, y * H)))
-          ctx.fill()
+          for (const poly of polys) {
+            ctx.beginPath()
+            poly.forEach(([x, y], i) => (i ? ctx.lineTo(x * W, y * H) : ctx.moveTo(x * W, y * H)))
+            ctx.fill()
+          }
           const d = ctx.getImageData(0, 0, W, H).data
           return Uint8Array.from({ length: W * H }, (_, i) => (d[i * 4 + 3] > 200 ? 1 : 0))
-        })()
+        }
+        const objMask = polyMask(objects ?? [])
+        const quadMask = polyMask([quad])
+        // tiled area = surface minus the objects in front of it
+        const mask = quadMask.map((v, i) => (v && !objMask[i] ? 1 : 0))
+        // objects standing on/in front of the surface
+        const objOnSurface = quadMask.map((v, i) => (v && objMask[i] ? 1 : 0))
         const corr = (x, y, msk) => {
           let n = 0, sx = 0, sy = 0
           for (let i = 0; i < x.length; i++) if (msk[i]) (n++, (sx += x[i]), (sy += y[i]))
@@ -144,13 +176,14 @@ const saveDataUrl = (url, f) => fs.writeFileSync(path.join(out, f), Buffer.from(
           lightingCorrelation: lc.r,
           meanLumRef: lc.meanRef,
           meanLumOurs: lc.meanOurs,
-          outsideDiff: meanAbs(ra, rb, mask, 0),
+          outsideDiff: meanAbs(ra, rb, quadMask, 0),
+          objectsDiff: objOnSurface.some((v) => v) ? meanAbs(ra, rb, objOnSurface, 1) : 0,
           detailRef: detail(ra, ba, mask),
           detailOurs: detail(rb, bb, mask),
           coverage: mask.reduce((s, v) => s + v, 0) / mask.length,
         }
       },
-      { ref, ours: photoShot, quad: c.photo.quad },
+      { ref, ours: photoShot, quad: c.photo.quad, objects: c.photo.objects },
     )
 
     // --- 2. 3D equivalent
@@ -188,6 +221,7 @@ const saveDataUrl = (url, f) => fs.writeFileSync(path.join(out, f), Buffer.from(
 <tr><td><img src="${r.id}-ref.jpg"><p>Reference</p></td><td><img src="${r.id}-photo.jpg"><p>Ours — photo re-tile</p></td><td>${fs.existsSync(path.join(out, `${r.id}-3d.jpg`)) ? `<img src="${r.id}-3d.jpg"><p>Ours — 3D room (${r.room.id})</p>` : ''}</td></tr>
 <tr><td colspan="3"><ul>
 <li>${badge(lightOk)} Lighting / shadow carry-over (correlation of low-frequency luminance): <b>${m.lightingCorrelation.toFixed(2)}</b> (≥ 0.60)</li>
+<li>${badge(m.objectsDiff <= 6)} Objects in front of the surface kept on top: mean diff <b>${m.objectsDiff.toFixed(2)}</b> (≤ 6)</li>
 <li>${badge(maskOk)} Area outside the surface untouched: mean diff <b>${m.outsideDiff.toFixed(2)}</b> (≤ 2)</li>
 <li>${badge(lumOk)} Overall brightness on the surface: ref <b>${m.meanLumRef.toFixed(0)}</b> vs ours <b>${m.meanLumOurs.toFixed(0)}</b></li>
 <li>${badge(detailOk)} Texture detail (high-frequency energy): ref <b>${m.detailRef.toFixed(1)}</b> vs ours <b>${m.detailOurs.toFixed(1)}</b></li>

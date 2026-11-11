@@ -14,8 +14,9 @@ The feature set was mapped from the public tilesview.ai visualiser with the
 
 - **Landing page** with a *Try Our Visualizer* button that opens the visualiser in a full-screen pop-up
 - **Room selection**: 6 demo 3D rooms (living, bedroom, kitchen, bathroom, patio, lobby) with category filter
-- **Upload your own room**: mark each surface by dragging 4 corners. Tiles are perspective-mapped
-  with the photo's own light and shadows kept
+- **Upload your own room**: mark each surface by dragging 4 corners, then roughly paint the **objects in
+  front** (sofa, plants, taps): the outline is detected automatically and those objects stay on top,
+  untouched. Tiles are perspective-mapped with the photo's own light and shadows and soft edges
 - **360° panorama** inside any demo room. Orbit and zoom in normal mode
 - **Surfaces**: Floor / Walls / Wall + Floor / Counter Top / Backsplash, or click any surface in the room (Shift-click to multi-select)
 - **Left panel**: Tiles (72 SKUs, procedurally drawn: marble, wood, stone, concrete, terrazzo, ceramic,
@@ -71,5 +72,5 @@ src/
 ## Notes / limitations
 
 - Uploaded rooms and products are stored only in your browser (IndexedDB). Shared links to them won't open elsewhere.
-- Photo rooms use manual 4-corner surface marking, and objects in front of a surface are tiled over (no AI masking).
+- Photo rooms use manual 4-corner surface marking. Object outlines come from colour segmentation of a rough brush, not an AI model.
 - Prices, SKUs and products are demo data.
