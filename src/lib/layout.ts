@@ -21,6 +21,7 @@ export const LAYOUTS: { id: SurfaceSettings['layout']; label: string; hint: stri
   { id: 'diagonal', label: 'Diagonal', hint: '45° lay' },
   { id: 'bookmatch', label: 'Bookmatch', hint: 'Mirror side-by-side slabs' },
   { id: 'endmatch', label: 'Endmatch', hint: 'Mirror slabs end-to-end' },
+  { id: 'quadmatch', label: '4-Slab Match', hint: 'Mirror four slabs around a centre' },
 ]
 
 export const GROUT_COLORS = ['#f4f2ec', '#d8d4cc', '#a9a69f', '#6c6a66', '#2e2d2b', '#c9b48f', '#8c6f52']
@@ -122,9 +123,10 @@ function placements(layout: SurfaceSettings['layout'], tw: number, th: number, D
     }
     case 'bookmatch':
     case 'endmatch':
+    case 'quadmatch':
       rows((y, j) => {
         let i = 0
-        for (let x = x0; x < end; x += tw, i++) cb({ x, y, w: tw, h: th, flipX: layout === 'bookmatch' && i % 2 === 1, flipY: layout === 'endmatch' && j % 2 === 1, i, j })
+        for (let x = x0; x < end; x += tw, i++) cb({ x, y, w: tw, h: th, flipX: layout !== 'endmatch' && i % 2 === 1, flipY: layout !== 'bookmatch' && j % 2 === 1, i, j })
       })
       return
     case 'grid':
@@ -163,6 +165,17 @@ export async function renderSurfaceMaps(product: Product, settings: SurfaceSetti
   const ctx = color.getContext('2d')!
   ctx.fillStyle = settings.groutColor
   ctx.fillRect(0, 0, W, H)
+  if (settings.sparkle && settings.groutMm > 0) {
+    const sr = rng(hashStr(product.id + 'sparkle'))
+    const n = Math.round((W * H) / 18)
+    for (let i = 0; i < n; i++) {
+      ctx.globalAlpha = 0.5 + sr() * 0.5
+      ctx.fillStyle = sr() < 0.7 ? settings.sparkle : '#ffffff'
+      const sz = 0.6 + sr() * 1.1
+      ctx.fillRect(sr() * W, sr() * H, sz, sz)
+    }
+    ctx.globalAlpha = 1
+  }
   // height map: black = grout (recessed), white = tile face
   const height = withMaps ? mk() : null
   const hctx = height?.getContext('2d', { willReadFrequently: true }) ?? null
@@ -176,7 +189,7 @@ export async function renderSurfaceMaps(product: Product, settings: SurfaceSetti
   const r = rng(seed)
   const tone = TONE[product.material] ?? 0
   const slab = variants.length === SLAB_GRID * SLAB_GRID && ['grid', 'diagonal', 'stack'].includes(settings.layout)
-  const sameImage = settings.layout === 'bookmatch' || settings.layout === 'endmatch'
+  const sameImage = ['bookmatch', 'endmatch', 'quadmatch'].includes(settings.layout)
   const turn180 = NATURAL.has(product.material) && ['grid', 'brick', 'third', 'random', 'diagonal'].includes(settings.layout)
   const handmade = HANDMADE.has(product.material)
 

@@ -1899,3 +1899,16 @@ input[type='range'] {
   background: var(--panel);
   font-size: 13px;
 }
+.grout-colors > button.none {
+  background: var(--panel);
+  font-size: 13px;
+  color: var(--muted);
+}
+.sp-body label.slider {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+}

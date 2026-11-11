@@ -94,6 +94,7 @@ export type LayoutPattern =
   | 'diagonal'
   | 'bookmatch'
   | 'endmatch'
+  | 'quadmatch'
 
 export interface SurfaceSettings {
   layout: LayoutPattern
@@ -101,6 +102,10 @@ export interface SurfaceSettings {
   groutColor: string
   groutMm: number
   finish: Finish
+  /** sparkle (glitter) grout colour, or null/undefined for plain grout */
+  sparkle?: string | null
+  /** rugs only: position offset from the rug's default spot, metres (x, z) */
+  offset?: [number, number]
 }
 
 export type Application =

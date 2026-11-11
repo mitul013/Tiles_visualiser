@@ -76,7 +76,11 @@ function RugMesh(props: { surface: Surface3D; app?: Application; selected: boole
   const p = app?.kind === 'tile' ? findProduct(app.productId) : undefined
   if (!p || !app || app.kind !== 'tile') return null
   const [a, b] = [p.size[0] / 100, p.size[1] / 100]
-  const surface: Surface3D = { ...props.surface, size: [a, b], rotation: a < b ? [-Math.PI / 2, 0, Math.PI / 2] : props.surface.rotation }
+  // long side across the room by default; user rotation / offset on top (the reference uses a drag handle)
+  const spin = (a < b ? Math.PI / 2 : 0) + (app.settings.rotation * Math.PI) / 180
+  const [ox, oz] = app.settings.offset ?? [0, 0]
+  const [px, py, pz] = props.surface.position
+  const surface: Surface3D = { ...props.surface, size: [a, b], position: [px + ox, py, pz + oz], rotation: [-Math.PI / 2, 0, spin] }
   return <SurfaceMesh {...props} surface={surface} app={{ ...app, settings: { ...app.settings, layout: 'grid', groutMm: 0, rotation: 0 } }} />
 }
 

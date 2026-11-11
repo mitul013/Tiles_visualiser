@@ -6,6 +6,7 @@ import type { Application, ColorFamily, Finish, Material, Product, SurfaceType }
 import { DEFAULT_SETTINGS } from '../lib/layout'
 import { Icon, Swatch, toast } from './ui'
 import { useT } from '../lib/i18n'
+import { notifyHost } from '../lib/host'
 
 type Tab = 'tiles' | 'paint' | 'upload' | 'applied'
 type Sort = 'new' | 'old' | 'az' | 'za' | 'size'
@@ -36,6 +37,7 @@ export function applyProduct(p: Product) {
         : { ...DEFAULT_SETTINGS, finish: p.finish, layout: p.material === 'Wood' || p.material === 'Subway' ? 'brick' : 'grid', groutMm: p.material === 'Wood' ? 1 : 2 },
   }))
   s.pushHistory(p.id)
+  notifyHost('PRODUCT_CLICK', { id: p.id, sku: p.sku, name: p.name, surfaces: targets })
   if (skipped) toast(`Applied to ${targets.length} surface(s); ${skipped} not suitable`)
 }
 

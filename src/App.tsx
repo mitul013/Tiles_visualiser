@@ -1,7 +1,10 @@
 import { useEffect } from 'react'
 import { useStore } from './store'
 import { readDesignFromHash } from './lib/share'
-import { getRoom } from './data/rooms'
+import { getRoom, ROOMS } from './data/rooms'
+import { PRODUCTS } from './data/products'
+import { applyProduct } from './components/ProductPanel'
+import type { Lang } from './lib/i18n'
 import Visualizer from './components/Visualizer'
 import { ModalHost } from './components/Modals'
 import { Icon } from './components/ui'
@@ -26,10 +29,29 @@ export default function App() {
   // Open a shared design (#design=...) or the visualiser directly (?visualizer)
   useEffect(() => {
     const load = () => {
+      const q = new URLSearchParams(location.search)
+      const lang = q.get('lang')
+      if (lang && ['en', 'es', 'fr', 'de', 'hi'].includes(lang)) useStore.getState().setLang(lang as Lang)
       const d = readDesignFromHash()
-      if (d && (getRoom(d.roomId) || useStore.getState().photoRooms.some((r) => r.id === d.roomId))) openRoom(d.roomId, d.applied)
-      else if (d) openRoom('living')
-      else if (/[?&]visualizer\b/.test(location.search)) setOpen(true)
+      if (d && (getRoom(d.roomId) || useStore.getState().photoRooms.some((r) => r.id === d.roomId))) return openRoom(d.roomId, d.applied)
+      if (d) return openRoom('living')
+      // embed / deep-link parameters (see src/lib/host.ts)
+      const roomParam = q.get('room')
+      const productParam = q.get('product')
+      const product = productParam ? [...PRODUCTS, ...useStore.getState().customProducts].find((p) => p.id === productParam || p.sku === productParam) : undefined
+      if (roomParam && (getRoom(roomParam) || useStore.getState().photoRooms.some((r) => r.id === roomParam))) openRoom(roomParam)
+      else if (product && q.get('view') !== 'rooms') openRoom(ROOMS.find((r) => r.surfaces.some((sf) => product.application.includes(sf.type)))?.id ?? 'living')
+      else if (q.has('visualizer') || q.has('view') || productParam) setOpen(true)
+      if (product && useStore.getState().view === 'visualizer') {
+        const st = useStore.getState()
+        const wanted = q.get('surface')
+        const surfaces = (getRoom(st.roomId)?.surfaces ?? []).filter((sf) => product.application.includes(sf.type) && (!wanted || sf.type === wanted))
+        const ids = surfaces.filter((sf) => sf.type === (wanted ?? surfaces[0]?.type)).map((sf) => sf.id)
+        if (ids.length) {
+          st.select(ids)
+          applyProduct(product)
+        }
+      }
     }
     if (useStore.persist.hasHydrated()) load()
     else return useStore.persist.onFinishHydration(load)

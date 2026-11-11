@@ -12,6 +12,7 @@ import RoomSelect from './RoomSelect'
 import { addCurrentToCatalog } from './Modals'
 import { downloadDataUrl, Icon, IconBtn, Swatch } from './ui'
 import { LANGUAGES, useT, type Lang } from '../lib/i18n'
+import { notifyHost } from '../lib/host'
 
 const Scene3D = lazy(() => import('./Scene3D'))
 
@@ -53,7 +54,12 @@ function Toolbar({ rootRef }: { rootRef: React.RefObject<HTMLDivElement | null> 
   }
   const dl = (hd: boolean) => {
     const url = s.capture?.(hd)
-    if (url) downloadDataUrl(url, `${roomName(s.roomId).replace(/\s+/g, '-').toLowerCase()}${hd ? '-hd' : ''}.jpg`)
+    const fileName = `${roomName(s.roomId).replace(/\s+/g, '-').toLowerCase()}${hd ? '-hd' : ''}.jpg`
+    if (url) {
+      notifyHost('SAVE_IMAGE', { fileName, imageFormat: 'jpeg', dataUrl: url })
+      downloadDataUrl(url, fileName)
+      notifyHost('SAVE_IMAGE_END')
+    }
     setMenu(null)
   }
   return (

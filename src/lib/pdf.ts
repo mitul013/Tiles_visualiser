@@ -7,6 +7,7 @@ import { calculate, money } from './calc'
 import { sizeLabel } from '../data/products'
 import { LAYOUTS } from './layout'
 import { shareUrl } from './share'
+import { notifyHost } from './host'
 
 const BRAND = 'Tiles Visualiser'
 
@@ -95,6 +96,7 @@ export async function downloadCatalogPdf(entries: CatalogEntry[], filename = 'ti
       y += 17
     }
   }
+  notifyHost('SAVE_PDF', { fileName: filename, arrayBuffer: doc.output('arraybuffer') })
   doc.save(filename)
 }
 
@@ -129,5 +131,6 @@ export async function downloadProductPdf(p: Product) {
   })
   doc.setTextColor(60, 60, 60)
   doc.text(doc.splitTextToSize(p.description, 186), 12, 142)
+  notifyHost('SAVE_PDF', { fileName: `${p.sku}.pdf`, arrayBuffer: doc.output('arraybuffer') })
   doc.save(`${p.sku}.pdf`)
 }
