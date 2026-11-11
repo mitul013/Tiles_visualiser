@@ -1,0 +1,77 @@
+{
+  "note": "Public sample images from the tilesview.ai homepage, downloaded on demand for local testing only. Never commit them.",
+  "files": [
+    {
+      "out": "ref-floor.jpg",
+      "url": "https://tilesview.ai/public/images/application/by-application/floor.webp",
+      "size": [
+        804,
+        520
+      ]
+    },
+    {
+      "out": "ref-wall.jpg",
+      "url": "https://tilesview.ai/public/images/application/by-application/wall.webp",
+      "size": [
+        804,
+        520
+      ]
+    },
+    {
+      "out": "ref-kitchen-backsplash.jpg",
+      "url": "https://tilesview.ai/public/images/application/by-application/kitchen-backsplash.webp",
+      "size": [
+        804,
+        520
+      ]
+    },
+    {
+      "out": "ref-countertop.jpg",
+      "url": "https://tilesview.ai/public/images/application/by-application/countertop.webp",
+      "size": [
+        804,
+        520
+      ]
+    },
+    {
+      "out": "ref-bathroom-shower-wall.jpg",
+      "url": "https://tilesview.ai/public/images/application/by-application/bathroom-shower-wall.webp",
+      "size": [
+        804,
+        520
+      ]
+    },
+    {
+      "out": "ref-outdoor.jpg",
+      "url": "https://tilesview.ai/public/images/application/by-application/outdoor.webp",
+      "size": [
+        804,
+        520
+      ]
+    },
+    {
+      "out": "ref-marble.jpg",
+      "url": "https://tilesview.ai/public/images/material/marble.webp"
+    },
+    {
+      "out": "tile-white-slab.jpg",
+      "url": "https://tilesview.ai/public/images/material/marble.webp",
+      "crop": [
+        300,
+        0,
+        400,
+        600
+      ]
+    },
+    {
+      "out": "tile-onyx-slab.jpg",
+      "url": "https://tilesview.ai/public/images/material/marble.webp",
+      "crop": [
+        0,
+        0,
+        240,
+        360
+      ]
+    }
+  ]
+}

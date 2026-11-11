@@ -13,9 +13,13 @@ The harness `scripts/compare.cjs` renders every case twice and writes an HTML re
 2. **3D equivalent**: the closest demo room with the same tile, layout, grout and finish.
 
 ```bash
+npm run fixtures           # downloads the reference samples into test-fixtures/ (git-ignored)
 npm run build && npx vite preview --port 4173 &
 npm run compare            # → test-fixtures/report/index.html
 ```
+
+The test cases (surface corners, object regions, tiles, settings) are versioned in
+`tests/visual/cases.json`; the image sources are listed in `tests/visual/fixtures.json`.
 
 ## Metrics (baseline → after this round of fixes)
 

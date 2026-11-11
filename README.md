@@ -49,8 +49,9 @@ Open `?visualizer` to jump straight into the room picker.
 
 ### Visual comparison harness
 
-See [`docs/COMPARISON.md`](docs/COMPARISON.md). Put reference images + `cases.json` in the git-ignored
-`test-fixtures/` folder, then `npm run compare` writes a side-by-side HTML report with metrics.
+See [`docs/COMPARISON.md`](docs/COMPARISON.md). `npm run fixtures` downloads the reference samples into the
+git-ignored `test-fixtures/` folder (cases live in `tests/visual/`), then `npm run compare` writes a side-by-side
+HTML report with metrics.
 
 ### Regenerating room thumbnails
 
