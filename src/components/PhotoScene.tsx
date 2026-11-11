@@ -3,15 +3,15 @@ import { findPaint, findProduct, useStore, type PhotoRoom } from '../store'
 import { renderPaint, renderTiledSurface } from '../lib/layout'
 import { loadImage } from '../lib/tileArt'
 import { drawPerspective, pointInQuad, quadPath, type Pt } from '../lib/homography'
-import { generateLayers, type RoomLayers } from '../lib/roomLayers'
+import { generateLayers, isCurrentLayers, type RoomLayers } from '../lib/roomLayers'
 import type { Application, LightTheme } from '../types'
 
 const TINT: Record<LightTheme, string | null> = { daylight: null, warm: 'rgba(255,170,80,0.10)', soft: 'rgba(255,220,180,0.08)', crystal: 'rgba(150,190,255,0.08)' }
 
 const layerCache = new Map<string, Promise<RoomLayers>>()
-/** The room's cut-out overlays: uploaded/saved ones, or generated once from surfaces + objects. */
+/** The room's layers: uploaded/saved ones, or generated once from the photo + surfaces + objects. */
 function getLayers(room: PhotoRoom, photo: HTMLImageElement): Promise<RoomLayers> {
-  if (room.layers) return Promise.resolve(room.layers)
+  if (isCurrentLayers(room.layers)) return Promise.resolve(room.layers)
   const key = `${room.id}:${room.objMask?.length ?? 0}:${JSON.stringify(room.surfaces.map((s) => s.quad))}`
   let p = layerCache.get(key)
   if (!p) {
@@ -76,14 +76,14 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
         if (img) tiles.push({ q: sf.q, img, id: sf.id, glossy: (app.kind === 'tile' ? app.settings.finish : app.finish) === 'glossy' })
       }
       const layers = await getLayers(room, photo)
-      const [matt, glossy] = await Promise.all([loadImage(layers.matt), loadImage(layers.glossy)])
+      const [cutout, shadow, reflection, highlight] = await Promise.all([layers.cutout, layers.shadow, layers.reflection, layers.highlight].map(loadImage))
       if (cancelled) return
       const ctx = cv.getContext('2d')!
       ctx.globalCompositeOperation = 'source-over'
-      // 1. original photo
+      // 0. original photo
       ctx.drawImage(photo, 0, 0, W, H)
       if (!useStore.getState().originalShot) setOriginal(cv.toDataURL('image/jpeg', 0.85))
-      // 2. tiles in perspective (slightly overscanned; the cut-out overlay defines the exact edge)
+      // 1. tiles in perspective
       for (const t of tiles) {
         ctx.save()
         quadPath(ctx, t.q)
@@ -91,21 +91,41 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
         drawPerspective(ctx, t.img, t.q)
         ctx.restore()
       }
-      // 3. cut-out overlay: matt everywhere, glossy variant inside glossy surfaces
-      const ov = document.createElement('canvas')
-      ov.width = W
-      ov.height = H
-      const octx = ov.getContext('2d')!
-      octx.drawImage(matt, 0, 0, W, H)
-      for (const t of tiles.filter((x) => x.glossy)) {
-        octx.save()
-        quadPath(octx, t.q)
-        octx.clip()
-        octx.clearRect(0, 0, W, H)
-        octx.drawImage(glossy, 0, 0, W, H)
-        octx.restore()
+      // 2. room light on the tiles (multiply): matt surfaces use the shadow map,
+      //    glossy surfaces the reflection map (the reference selects these per surface with a stencil)
+      const lightL = document.createElement('canvas')
+      lightL.width = W
+      lightL.height = H
+      const lctx = lightL.getContext('2d')!
+      lctx.fillStyle = '#fff'
+      lctx.fillRect(0, 0, W, H)
+      // 3. highlights (screen): full on glossy, softer on matt
+      const highL = document.createElement('canvas')
+      highL.width = W
+      highL.height = H
+      const hctx = highL.getContext('2d')!
+      hctx.fillStyle = '#000'
+      hctx.fillRect(0, 0, W, H)
+      for (const t of tiles) {
+        for (const [c, img, alpha] of [
+          [lctx, t.glossy ? reflection : shadow, 1],
+          [hctx, highlight, t.glossy ? 1 : 0.45],
+        ] as const) {
+          c.save()
+          quadPath(c, t.q)
+          c.clip()
+          c.globalAlpha = alpha
+          c.drawImage(img, 0, 0, W, H)
+          c.restore()
+        }
       }
-      ctx.drawImage(ov, 0, 0)
+      ctx.globalCompositeOperation = 'multiply'
+      ctx.drawImage(lightL, 0, 0)
+      ctx.globalCompositeOperation = 'screen'
+      ctx.drawImage(highL, 0, 0)
+      // 4. cut-out on top: objects and everything untiled stay pixel-perfect
+      ctx.globalCompositeOperation = 'source-over'
+      ctx.drawImage(cutout, 0, 0, W, H)
       cv.dataset.ready = '1'
       const tint = TINT[theme]
       if (tint) {

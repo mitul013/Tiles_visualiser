@@ -3,9 +3,18 @@ import { useStore, type PhotoSurface } from '../store'
 import type { SurfaceType } from '../types'
 import { Icon, Modal, toast } from './ui'
 import { refineMaskCanvas } from '../lib/objectMask'
-import type { RoomLayers } from '../lib/roomLayers'
+import { generateLayers, type RoomLayers } from '../lib/roomLayers'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
+
+type LayerKey = 'cutout' | 'shadow' | 'reflection' | 'highlight'
+const LAYER_KEYS: LayerKey[] = ['cutout', 'shadow', 'reflection', 'highlight']
+const LAYER_INFO: Record<LayerKey, [string, string]> = {
+  cutout: ['Cut-out (PNG, transparent tile area)', 'Drawn on top: keeps furniture and objects pixel-perfect'],
+  shadow: ['Matt light map', 'Greyscale, multiplied onto matt tiles (white = no change)'],
+  reflection: ['Glossy light map', 'Greyscale, multiplied onto glossy tiles'],
+  highlight: ['Highlights', 'Greyscale, added with a screen blend (black = no change)'],
+}
 
 const PRESET: Record<SurfaceType, { label: string; quad: [number, number][]; size: [number, number] }> = {
   floor: { label: 'Floor', quad: [[0.22, 0.62], [0.78, 0.62], [1, 0.98], [0, 0.98]], size: [4, 4] },
@@ -32,8 +41,8 @@ export default function UploadRoomModal() {
   const [hasMask, setHasMask] = useState(false)
   const [snap, setSnap] = useState(true)
   /** optional uploaded cut-out overlays (transparent where tiles go) */
-  const [cutout, setCutout] = useState<{ matt?: string; glossy?: string }>({})
-  const loadCutout = (kind: 'matt' | 'glossy', f?: File) => {
+  const [cutout, setCutout] = useState<Partial<Record<LayerKey, string>>>({})
+  const loadCutout = (kind: LayerKey, f?: File) => {
     if (!f || !img) return
     const reader = new FileReader()
     reader.onload = async () => {
@@ -45,7 +54,7 @@ export default function UploadRoomModal() {
       c.width = img.w
       c.height = img.h
       c.getContext('2d')!.drawImage(im, 0, 0, img.w, img.h)
-      setCutout((cur) => ({ ...cur, [kind]: c.toDataURL('image/png') }))
+      setCutout((cur) => ({ ...cur, [kind]: kind === 'cutout' ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.9) }))
     }
     reader.readAsDataURL(f)
   }
@@ -143,11 +152,26 @@ export default function UploadRoomModal() {
     return [Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))]
   }
 
-  const save = () => {
+  const save = async () => {
     if (!img) return
     const id = `photo-${uid()}`
     const objMask = hasMask && maskRef.current ? maskRef.current.toDataURL('image/png') : undefined
-    const layers: RoomLayers | undefined = cutout.matt ? { matt: cutout.matt, glossy: cutout.glossy ?? cutout.matt, source: 'uploaded' } : undefined
+    let layers: RoomLayers | undefined
+    if (Object.keys(cutout).length) {
+      // generate what wasn't uploaded (the uploaded cut-out defines the tile area exactly)
+      const photo = new Image()
+      photo.src = img.src
+      await photo.decode()
+      const cut = cutout.cutout ? new Image() : null
+      if (cut) {
+        cut.src = cutout.cutout!
+        await cut.decode()
+      }
+      const quads = surfaces.map((sf) => sf.quad.map(([x, y]) => [x * img.w, y * img.h] as [number, number]))
+      const gen = generateLayers(photo, img.w, img.h, quads, hasMask ? maskRef.current : null, cut)
+      const all = LAYER_KEYS.every((k) => cutout[k])
+      layers = { ...gen, ...cutout, source: all ? 'uploaded' : 'mixed' }
+    }
     addRoom({ id, name, image: img.src, width: img.w, height: img.h, surfaces, objMask, layers, createdAt: Date.now() })
     openRoom(id, {})
     useStore.getState().select(surfaces.filter((s) => s.type === 'floor').map((s) => s.id).slice(0, 1))
@@ -271,17 +295,20 @@ export default function UploadRoomModal() {
             {mode === 'cutout' && (
               <div className="cutout-panel">
                 <p className="hint">
-                  Optional, most precise: upload the room as a <b>cut-out</b> (PNG/WebP, same photo with the tile area <b>transparent</b> and furniture kept). Shadows can be left as semi-transparent dark pixels. If you skip this, the cut-out is generated from your surfaces and painted objects.
+                  Optional, most precise: upload prepared room layers. The <b>cut-out</b> is the same photo with the tile area <b>transparent</b> and everything else kept. The light maps are greyscale images of the room's lighting on the tile area.
                 </p>
-                {(['matt', 'glossy'] as const).map((k) => (
-                  <label key={k} className="drop small">
-                    {cutout[k] ? <img src={cutout[k]} alt={`${k} cut-out`} /> : <span>{k === 'matt' ? 'Matt cut-out layer' : 'Glossy cut-out layer (optional)'}</span>}
-                    <input type="file" accept="image/png,image/webp" hidden onChange={(e) => loadCutout(k, e.target.files?.[0])} />
-                  </label>
-                ))}
-                {cutout.matt && (
+                <div className="layer-grid">
+                  {LAYER_KEYS.map((k) => (
+                    <label key={k} className="drop small" title={LAYER_INFO[k][1]}>
+                      {cutout[k] ? <img src={cutout[k]} alt={LAYER_INFO[k][0]} /> : <span>{LAYER_INFO[k][0]}</span>}
+                      <input type="file" accept="image/png,image/webp,image/jpeg" hidden onChange={(e) => loadCutout(k, e.target.files?.[0])} />
+                    </label>
+                  ))}
+                </div>
+                <p className="hint">Hover a slot for what it does. Any layer you don't upload is generated from the photo.</p>
+                {Object.keys(cutout).length > 0 && (
                   <button className="btn sm" onClick={() => setCutout({})}>
-                    Remove cut-out layers
+                    Remove uploaded layers
                   </button>
                 )}
               </div>
