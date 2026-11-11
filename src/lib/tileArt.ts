@@ -55,14 +55,14 @@ function blotches(ctx: CanvasRenderingContext2D, w: number, h: number, color: st
   ctx.restore()
 }
 
-function veins(ctx: CanvasRenderingContext2D, w: number, h: number, color: string, count: number, width: number, alpha: number, r: () => number) {
+function veins(ctx: CanvasRenderingContext2D, w: number, h: number, color: string, count: number, width: number, alpha: number, r: () => number, wander = 0.7, baseAngle?: number) {
   ctx.save()
   ctx.strokeStyle = color
   ctx.lineCap = 'round'
   for (let v = 0; v < count; v++) {
     let x = r() * w
     let y = r() < 0.5 ? -10 : r() * h
-    let ang = Math.PI * (0.15 + r() * 0.7)
+    let ang = baseAngle !== undefined ? baseAngle + (r() - 0.5) * 0.5 : Math.PI * (0.15 + r() * 0.7)
     const steps = 40 + Math.floor(r() * 60)
     const stepLen = Math.max(w, h) / 45
     let lw = width * (0.4 + r() * 1.2)
@@ -70,7 +70,7 @@ function veins(ctx: CanvasRenderingContext2D, w: number, h: number, color: strin
     ctx.beginPath()
     ctx.moveTo(x, y)
     for (let i = 0; i < steps; i++) {
-      ang += (r() - 0.5) * 0.7
+      ang += (r() - 0.5) * wander
       x += Math.cos(ang) * stepLen
       y += Math.sin(ang) * stepLen
       ctx.lineTo(x, y)
@@ -104,13 +104,24 @@ function veins(ctx: CanvasRenderingContext2D, w: number, h: number, color: strin
 function drawMarble(ctx: CanvasRenderingContext2D, w: number, h: number, a: TileArt, r: () => number) {
   ctx.fillStyle = a.base
   ctx.fillRect(0, 0, w, h)
-  blotches(ctx, w, h, a.accent, 10, Math.max(w, h) * 0.5, 0.12, r)
-  ctx.filter = `blur(${Math.max(1, w / 160)}px)`
-  veins(ctx, w, h, a.accent, 5, w / 90, 0.35, r)
+  const big = Math.max(w, h)
+  // cloudy mottling at several scales
+  blotches(ctx, w, h, shade(a.base, -10), 40, big * 0.22, 0.18, r)
+  blotches(ctx, w, h, shade(a.base, 8), 30, big * 0.15, 0.2, r)
+  blotches(ctx, w, h, a.accent, 12, big * 0.3, 0.07, r)
+  // the slab has a dominant vein direction
+  const dir = Math.PI * (0.18 + r() * 0.2)
+  // soft ghost veins
+  ctx.filter = `blur(${Math.max(2, w / 120)}px)`
+  veins(ctx, w, h, a.accent, 4, w / 70, 0.18, r, 0.25, dir)
+  ctx.filter = `blur(${Math.max(0.6, w / 900)}px)`
+  // main crisp veins
+  veins(ctx, w, h, a.accent, 3, w / 380, 0.75, r, 0.3, dir)
+  // fine hairline network
+  veins(ctx, w, h, a.accent, 7, w / 1100, 0.35, r, 0.9, dir)
+  if (a.accent2) veins(ctx, w, h, a.accent2, 2, w / 500, 0.55, r, 0.35, dir)
   ctx.filter = 'none'
-  veins(ctx, w, h, a.accent, 4, w / 260, 0.7, r)
-  if (a.accent2) veins(ctx, w, h, a.accent2, 2, w / 300, 0.6, r)
-  noise(ctx, w, h, 8, r)
+  noise(ctx, w, h, 5, r)
 }
 
 function drawWood(ctx: CanvasRenderingContext2D, w: number, h: number, a: TileArt, r: () => number) {
@@ -122,60 +133,95 @@ function drawWood(ctx: CanvasRenderingContext2D, w: number, h: number, a: TileAr
     ctx.rotate(Math.PI / 2)
     ;[w, h] = [h, w]
   }
-  const g = ctx.createLinearGradient(0, 0, w, 0)
-  g.addColorStop(0, a.base)
-  g.addColorStop(0.5, shade(a.base, (r() - 0.5) * 18))
-  g.addColorStop(1, a.base)
-  ctx.fillStyle = g
+  ctx.fillStyle = shade(a.base, (r() - 0.5) * 14)
   ctx.fillRect(0, 0, w, h)
+  // broad colour bands
+  for (let i = 0; i < 6; i++) {
+    const x = r() * w
+    const bw = w * (0.1 + r() * 0.35)
+    const g = ctx.createLinearGradient(x - bw, 0, x + bw, 0)
+    const c = r() < 0.5 ? shade(a.base, 14) : shade(a.base, -14)
+    g.addColorStop(0, 'transparent')
+    g.addColorStop(0.5, c)
+    g.addColorStop(1, 'transparent')
+    ctx.globalAlpha = 0.35
+    ctx.fillStyle = g
+    ctx.fillRect(x - bw, 0, bw * 2, h)
+  }
+  // soft grain lines
   ctx.strokeStyle = a.accent
-  const lines = Math.round(w / 2.2)
+  const lines = Math.round(w / 4)
   for (let i = 0; i < lines; i++) {
-    let x = r() * w
-    ctx.globalAlpha = 0.08 + r() * 0.25
-    ctx.lineWidth = 0.4 + r() * 1.6
+    const x = r() * w
+    ctx.globalAlpha = 0.04 + r() * 0.12
+    ctx.lineWidth = 0.6 + r() * 1.4
     ctx.beginPath()
     ctx.moveTo(x, 0)
-    const amp = r() * 3
-    const freq = 0.002 + r() * 0.01
+    const amp = 1 + r() * 4
+    const freq = 0.002 + r() * 0.006
     const ph = r() * 10
-    for (let y = 0; y <= h; y += 8) {
-      ctx.lineTo(x + Math.sin(y * freq + ph) * amp, y)
-    }
+    for (let y = 0; y <= h; y += 10) ctx.lineTo(x + Math.sin(y * freq + ph) * amp, y)
     ctx.stroke()
-    x += 1
   }
-  // knots
-  const knots = r() < 0.6 ? 1 + Math.floor(r() * 2) : 0
-  for (let k = 0; k < knots; k++) {
-    const kx = w * (0.2 + r() * 0.6)
-    const ky = r() * h
-    for (let ring = 0; ring < 6; ring++) {
-      ctx.globalAlpha = 0.25
+  // cathedral arcs
+  if (r() < 0.7) {
+    const cx = w * (0.3 + r() * 0.4)
+    const cy = r() * h
+    for (let k = 0; k < 7; k++) {
+      ctx.globalAlpha = 0.1
       ctx.lineWidth = 1
       ctx.beginPath()
-      ctx.ellipse(kx, ky, 2 + ring * 2.2, 5 + ring * 6, 0, 0, Math.PI * 2)
+      ctx.ellipse(cx, cy, 3 + k * w * 0.05, h * (0.06 + k * 0.03), 0, Math.PI * 1.1, Math.PI * 1.9)
       ctx.stroke()
     }
   }
+  // occasional small knot
+  if (r() < 0.3) {
+    const kx = w * (0.2 + r() * 0.6)
+    const ky = r() * h
+    ctx.globalAlpha = 0.35
+    ctx.fillStyle = a.accent
+    ctx.beginPath()
+    ctx.ellipse(kx, ky, 2.5, 5, 0, 0, Math.PI * 2)
+    ctx.fill()
+  }
   ctx.restore()
   ctx.globalAlpha = 1
-  noise(ctx, ctx.canvas.width, ctx.canvas.height, 10, r)
+  noise(ctx, ctx.canvas.width, ctx.canvas.height, 7, r)
 }
 
 function drawStone(ctx: CanvasRenderingContext2D, w: number, h: number, a: TileArt, r: () => number) {
   ctx.fillStyle = a.base
   ctx.fillRect(0, 0, w, h)
-  blotches(ctx, w, h, a.accent, 30, Math.max(w, h) * 0.25, 0.35, r)
-  blotches(ctx, w, h, shade(a.base, 25), 20, Math.max(w, h) * 0.2, 0.25, r)
-  // pits / speckles
-  for (let i = 0; i < (w * h) / 220; i++) {
-    ctx.globalAlpha = 0.15 + r() * 0.3
+  const big = Math.max(w, h)
+  blotches(ctx, w, h, a.accent, 18, big * 0.3, 0.12, r)
+  blotches(ctx, w, h, shade(a.base, 18), 14, big * 0.25, 0.12, r)
+  // fine directional streaks (quartzite / slate cleft)
+  const dir = (r() - 0.5) * 0.5
+  ctx.save()
+  ctx.translate(w / 2, h / 2)
+  ctx.rotate(dir)
+  for (let i = 0; i < big / 1.5; i++) {
+    const y = (r() - 0.5) * big * 1.4
+    const x = (r() - 0.5) * big * 1.4
+    const len = big * (0.05 + r() * 0.35)
+    ctx.globalAlpha = 0.05 + r() * 0.12
+    ctx.strokeStyle = r() < 0.55 ? shade(a.base, 28) : a.accent
+    ctx.lineWidth = 0.5 + r() * 1.2
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.quadraticCurveTo(x + len / 2, y + (r() - 0.5) * 6, x + len, y + (r() - 0.5) * 4)
+    ctx.stroke()
+  }
+  ctx.restore()
+  // speckles
+  for (let i = 0; i < (w * h) / 300; i++) {
+    ctx.globalAlpha = 0.1 + r() * 0.2
     ctx.fillStyle = r() < 0.5 ? a.accent : shade(a.base, 30)
-    ctx.fillRect(r() * w, r() * h, 1 + r() * 2, 1 + r() * 2)
+    ctx.fillRect(r() * w, r() * h, 1 + r() * 1.5, 1 + r() * 1.5)
   }
   ctx.globalAlpha = 1
-  noise(ctx, w, h, 22, r)
+  noise(ctx, w, h, 14, r)
 }
 
 function drawConcrete(ctx: CanvasRenderingContext2D, w: number, h: number, a: TileArt, r: () => number) {
@@ -376,7 +422,9 @@ export function loadImage(src: string) {
   return p
 }
 
-const VARIANTS = 4
+const VARIANTS = 6
+/** Marble faces are cut from one SLAB_GRID x SLAB_GRID slab so veins continue across neighbouring tiles. */
+export const SLAB_GRID = 3
 const variantCache = new Map<string, Promise<HTMLCanvasElement[]>>()
 
 /**
@@ -394,6 +442,18 @@ export function getTileVariants(p: Product, res = 384): Promise<HTMLCanvasElemen
     const h = ch * k
     const out: HTMLCanvasElement[] = []
     const img = p.art.kind === 'image' && p.art.imageUrl ? await loadImage(p.art.imageUrl) : null
+    if (!img && p.art.kind === 'marble') {
+      const slab = mkCanvas(w * SLAB_GRID, h * SLAB_GRID)
+      const sctx = slab.getContext('2d', { willReadFrequently: true })!
+      drawMarble(sctx, slab.width, slab.height, p.art, rng(hashStr(p.name)))
+      for (let j = 0; j < SLAB_GRID; j++)
+        for (let i = 0; i < SLAB_GRID; i++) {
+          const c = mkCanvas(w, h)
+          c.getContext('2d')!.drawImage(slab, i * c.width, j * c.height, c.width, c.height, 0, 0, c.width, c.height)
+          out.push(c)
+        }
+      return out
+    }
     for (let i = 0; i < (img ? 1 : VARIANTS); i++) {
       const c = mkCanvas(w, h)
       const ctx = c.getContext('2d', { willReadFrequently: true })!

@@ -7,45 +7,64 @@ import type { Application, LightTheme } from '../types'
 
 const TINT: Record<LightTheme, string | null> = { daylight: null, warm: 'rgba(255,170,80,0.10)', soft: 'rgba(255,220,180,0.08)', crystal: 'rgba(150,190,255,0.08)' }
 
-/** Grayscale "lighting" layer for one surface: photo luminance normalised to the surface mean. */
-function shadingFor(photo: HTMLImageElement, q: Pt[], W: number, H: number) {
-  const c = document.createElement('canvas')
-  c.width = W
-  c.height = H
-  const ctx = c.getContext('2d', { willReadFrequently: true })!
-  ctx.drawImage(photo, 0, 0, W, H)
+interface Shading {
+  x0: number
+  y0: number
+  w: number
+  h: number
+  /** per-pixel light factor; 1 = the surface's average light */
+  f: Float32Array
+}
+
+/**
+ * Lighting of one surface taken from the photo: luminance blurred slightly (to drop the old
+ * tile's texture/grout) and normalised to the surface mean, so shadows darken and highlights
+ * brighten the new tile while its average colour stays true.
+ */
+function shadingFor(photo: HTMLImageElement, q: Pt[], W: number, H: number, strength = 0.9): Shading {
   const xs = q.map((p) => p[0])
   const ys = q.map((p) => p[1])
   const x0 = Math.max(0, Math.floor(Math.min(...xs)))
   const y0 = Math.max(0, Math.floor(Math.min(...ys)))
   const x1 = Math.min(W, Math.ceil(Math.max(...xs)))
   const y1 = Math.min(H, Math.ceil(Math.max(...ys)))
-  const bw = Math.max(1, x1 - x0)
-  const bh = Math.max(1, y1 - y0)
-  const img = ctx.getImageData(x0, y0, bw, bh)
-  const d = img.data
+  const w = Math.max(1, x1 - x0)
+  const h = Math.max(1, y1 - y0)
+  const c = document.createElement('canvas')
+  c.width = W
+  c.height = H
+  const ctx = c.getContext('2d', { willReadFrequently: true })!
+  ctx.filter = `blur(${Math.max(2, W / 200)}px)`
+  ctx.drawImage(photo, 0, 0, W, H)
+  const d = ctx.getImageData(x0, y0, w, h).data
+  const L = new Float32Array(w * h)
   let sum = 0
   let n = 0
-  for (let y = 0; y < bh; y += 3)
-    for (let x = 0; x < bw; x += 3) {
-      if (!pointInQuad([x0 + x, y0 + y], q)) continue
-      const i = (y * bw + x) * 4
-      sum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]
-      n++
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x
+      L[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]
+      if ((x % 2 === 0 && y % 2 === 0) && pointInQuad([x0 + x, y0 + y], q)) {
+        sum += L[i]
+        n++
+      }
     }
-  const mean = n ? sum / n : 128
-  for (let i = 0; i < d.length; i += 4) {
-    const l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]
-    // keep shadows, cap highlights; blend toward neutral so texture stays visible
-    const s = Math.min(1, l / (mean * 1.08))
-    const v = Math.round(255 * (0.3 + 0.7 * s))
-    d[i] = d[i + 1] = d[i + 2] = v
+  const mean = Math.max(8, n ? sum / n : 128)
+  const f = new Float32Array(w * h)
+  for (let i = 0; i < f.length; i++) f[i] = Math.min(1.8, 1 + strength * (L[i] / mean - 1))
+  return { x0, y0, w, h, f }
+}
+
+function applyShading(lc: CanvasRenderingContext2D, s: Shading) {
+  const img = lc.getImageData(s.x0, s.y0, s.w, s.h)
+  const d = img.data
+  for (let i = 0; i < s.f.length; i++) {
+    const k = s.f[i]
+    d[i * 4] = Math.min(255, d[i * 4] * k)
+    d[i * 4 + 1] = Math.min(255, d[i * 4 + 1] * k)
+    d[i * 4 + 2] = Math.min(255, d[i * 4 + 2] * k)
   }
-  const out = document.createElement('canvas')
-  out.width = W
-  out.height = H
-  out.getContext('2d')!.putImageData(img, x0, y0)
-  return out
+  lc.putImageData(img, s.x0, s.y0)
 }
 
 async function surfaceImage(app: Application, size: [number, number]) {
@@ -73,7 +92,7 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
   const setOriginal = useStore((s) => s.setOriginalShot)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
-  const shading = useRef<Map<string, HTMLCanvasElement>>(new Map())
+  const shading = useRef<Map<string, Shading>>(new Map())
   const [hover, setHover] = useState<string | null>(null)
 
   const W = room.width
@@ -103,15 +122,14 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
         const layer = document.createElement('canvas')
         layer.width = W
         layer.height = H
-        const lc = layer.getContext('2d')!
+        const lc = layer.getContext('2d', { willReadFrequently: true })!
         drawPerspective(lc, l.img, l.q)
         let sh = shading.current.get(l.id)
         if (!sh) {
           sh = shadingFor(photo, l.q, W, H)
           shading.current.set(l.id, sh)
         }
-        lc.globalCompositeOperation = 'multiply'
-        lc.drawImage(sh, 0, 0)
+        applyShading(lc, sh)
         if (l.glossy) {
           lc.globalCompositeOperation = 'screen'
           const g = lc.createLinearGradient(0, 0, W, H)
@@ -162,11 +180,14 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
   }, [selected, hover, room.id])
 
   useEffect(() => {
-    setCapture(() => {
+    const capture = () => {
       const cv = canvasRef.current
       return cv ? cv.toDataURL('image/jpeg', 0.9) : ''
-    })
-    return () => setCapture(null)
+    }
+    setCapture(capture)
+    return () => {
+      if (useStore.getState().capture === capture) setCapture(null)
+    }
   }, [setCapture])
 
   const toImg = (e: React.MouseEvent<HTMLCanvasElement>): Pt => {

@@ -6,7 +6,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import type { Room, Surface3D } from '../data/rooms'
 import type { Application, LightTheme } from '../types'
 import { findPaint, findProduct, useStore } from '../store'
-import { renderPaint, renderTiledSurface } from '../lib/layout'
+import { renderPaint, renderSurfaceMaps } from '../lib/layout'
 import { Furniture } from './Furniture'
 
 const THEMES: Record<LightTheme, { color: string; ambient: number; key: number; sky: string; ground: string; bg: string }> = {
@@ -16,13 +16,18 @@ const THEMES: Record<LightTheme, { color: string; ambient: number; key: number; 
   crystal: { color: '#e4efff', ambient: 0.6, key: 1.65, sky: '#e8f1ff', ground: '#b9c3cf', bg: '#dbe6f5' },
 }
 
+interface SurfaceTex {
+  map: THREE.Texture
+  normal?: THREE.Texture
+  rough?: THREE.Texture
+}
+
 function useSurfaceTexture(surface: Surface3D, app: Application | undefined) {
-  const [tex, setTex] = useState<THREE.Texture | null>(null)
+  const [tex, setTex] = useState<SurfaceTex | null>(null)
   const gl = useThree((s) => s.gl)
   const key = JSON.stringify(app ?? null)
   useEffect(() => {
     let cancelled = false
-    let made: THREE.Texture | null = null
     ;(async () => {
       if (!app) return setTex(null)
       if (app.kind === 'paint') {
@@ -32,18 +37,21 @@ function useSurfaceTexture(surface: Surface3D, app: Application | undefined) {
         t.wrapS = t.wrapT = THREE.RepeatWrapping
         t.repeat.set(surface.size[0] * 2, surface.size[1] * 2)
         t.colorSpace = THREE.SRGBColorSpace
-        made = t
-      } else {
-        const p = findProduct(app.productId)
-        if (!p) return
-        const c = await renderTiledSurface(p, app.settings, surface.size)
-        if (cancelled) return
-        const t = new THREE.CanvasTexture(c)
-        t.colorSpace = THREE.SRGBColorSpace
-        t.anisotropy = gl.capabilities.getMaxAnisotropy()
-        made = t
+        if (!cancelled) setTex({ map: t })
+        return
       }
-      if (!cancelled) setTex(made)
+      const p = findProduct(app.productId)
+      if (!p) return
+      const maps = await renderSurfaceMaps(p, app.settings, surface.size)
+      if (cancelled) return
+      const aniso = gl.capabilities.getMaxAnisotropy()
+      const mk = (c: HTMLCanvasElement, srgb: boolean) => {
+        const t = new THREE.CanvasTexture(c)
+        if (srgb) t.colorSpace = THREE.SRGBColorSpace
+        t.anisotropy = aniso
+        return t
+      }
+      setTex({ map: mk(maps.color, true), normal: mk(maps.normal, false), rough: mk(maps.roughness, false) })
     })()
     return () => {
       cancelled = true
@@ -51,29 +59,53 @@ function useSurfaceTexture(surface: Surface3D, app: Application | undefined) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, surface.id, surface.size[0], surface.size[1]])
   // dispose textures we replace
-  const prev = useRef<THREE.Texture | null>(null)
+  const prev = useRef<SurfaceTex | null>(null)
   useEffect(() => {
-    if (prev.current && prev.current !== tex) prev.current.dispose()
+    const old = prev.current
+    if (old && old !== tex) [old.map, old.normal, old.rough].forEach((t) => t?.dispose())
     prev.current = tex
   }, [tex])
   return tex
 }
 
-function SurfaceMesh({ surface, app, selected, onPick, onHover }: { surface: Surface3D; app?: Application; selected: boolean; onPick: (id: string, additive: boolean) => void; onHover: (label: string | null) => void }) {
+const COUNTER_THICKNESS = 0.04
+
+function SurfaceMesh({ surface, app, selected, outdoor, onPick, onHover }: { surface: Surface3D; app?: Application; selected: boolean; outdoor?: boolean; onPick: (id: string, additive: boolean) => void; onHover: (label: string | null) => void }) {
   const tex = useSurfaceTexture(surface, app)
   const finish = app?.kind === 'tile' ? app.settings.finish : app?.finish ?? 'matt'
   const glossy = finish === 'glossy'
   const horizontal = surface.type === 'floor'
+  const counter = surface.type === 'countertop'
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
     if (e.delta > 6) return
     if (e.intersections[0]?.object !== e.object) return
     e.stopPropagation()
     onPick(surface.id, e.shiftKey || e.metaKey || e.ctrlKey)
   }
+  // countertops are slabs: the top face sits at the surface position and the material wraps the edges
+  const position: [number, number, number] = counter ? [surface.position[0], surface.position[1] - COUNTER_THICKNESS / 2, surface.position[2]] : surface.position
+  const ao =
+    surface.type === 'floor'
+      ? edgeAO(surface.size, { l: !outdoor, r: !outdoor, t: true, b: !outdoor })
+      : surface.type === 'wall'
+        ? edgeAO(surface.size, { l: !outdoor, r: !outdoor, t: !outdoor, b: true })
+        : undefined
+  const common = {
+    key: tex?.map.uuid ?? 'none',
+    aoMap: ao,
+    aoMapIntensity: 1,
+    map: tex?.map,
+    normalMap: tex?.normal,
+    normalScale: new THREE.Vector2(0.9, 0.9),
+    roughnessMap: tex?.rough,
+    color: tex ? '#ffffff' : '#d9d9d9',
+  }
   return (
     <mesh
-      position={surface.position}
+      position={position}
       rotation={surface.rotation}
+      receiveShadow
+      castShadow={counter}
       onClick={handleClick}
       onPointerMove={(e) => {
         if (e.intersections[0]?.object === e.object) {
@@ -87,25 +119,23 @@ function SurfaceMesh({ surface, app, selected, onPick, onHover }: { surface: Sur
       }}
       userData={{ surfaceId: surface.id }}
     >
-      <planeGeometry args={surface.size} />
+      {counter ? <boxGeometry args={[surface.size[0], surface.size[1], COUNTER_THICKNESS]} /> : <planeGeometry args={surface.size} />}
       {horizontal && glossy ? (
         <MeshReflectorMaterial
-          key={tex?.uuid ?? 'none'}
-          map={tex ?? undefined}
-          color={tex ? '#ffffff' : '#cccccc'}
+          {...common}
           blur={[400, 120]}
           resolution={1024}
           mixBlur={1}
-          mixStrength={0.55}
-          mirror={0.35}
-          roughness={0.25}
+          mixStrength={0.6}
+          mirror={0.4}
+          roughness={tex?.rough ? 1 : 0.25}
           depthScale={0.6}
           minDepthThreshold={0.4}
           maxDepthThreshold={1.2}
           metalness={0}
         />
       ) : (
-        <meshStandardMaterial key={tex?.uuid ?? 'none'} map={tex ?? undefined} color={tex ? '#ffffff' : '#d9d9d9'} roughness={glossy ? 0.12 : 0.85} envMapIntensity={glossy ? 0.9 : 0.25} />
+        <meshStandardMaterial {...common} roughness={tex?.rough ? 1 : glossy ? 0.12 : 0.85} envMapIntensity={glossy ? 1.0 : 0.3} />
       )}
       {selected && <Edges color="#1e88ff" lineWidth={3} />}
     </mesh>
@@ -130,33 +160,21 @@ function Env() {
 
 /** Registers a capture() function on the store so toolbars can grab a JPEG of the view. */
 function CaptureBridge({ roomId }: { roomId: string }) {
-  const { gl, scene, camera, size } = useThree()
+  const gl = useThree((s) => s.gl)
   const setCapture = useStore((s) => s.setCapture)
   const setOriginal = useStore((s) => s.setOriginalShot)
   useEffect(() => {
-    const capture = (hd = false) => {
-      const prevRatio = gl.getPixelRatio()
-      if (hd) {
-        gl.setPixelRatio(Math.min(3, prevRatio * 2))
-        gl.setSize(size.width, size.height, false)
-      }
-      gl.render(scene, camera)
-      const url = gl.domElement.toDataURL('image/jpeg', hd ? 0.95 : 0.85)
-      if (hd) {
-        gl.setPixelRatio(prevRatio)
-        gl.setSize(size.width, size.height, false)
-      }
-      return url
-    }
+    // preserveDrawingBuffer keeps the last composed frame (with AO) readable
+    const capture = (hd = false) => gl.domElement.toDataURL('image/jpeg', hd ? 0.95 : 0.85)
     setCapture(capture)
-    return () => setCapture(null)
-  }, [gl, scene, camera, size, setCapture])
+    // only clear if still ours: the R3F root unmounts asynchronously, after the next scene registered
+    return () => {
+      if (useStore.getState().capture === capture) setCapture(null)
+    }
+  }, [gl, setCapture])
   useEffect(() => {
     const t = setTimeout(() => {
-      if (!useStore.getState().originalShot) {
-        gl.render(scene, camera)
-        setOriginal(gl.domElement.toDataURL('image/jpeg', 0.85))
-      }
+      if (!useStore.getState().originalShot) setOriginal(gl.domElement.toDataURL('image/jpeg', 0.85))
     }, 1800)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -209,6 +227,57 @@ function Controls({ room, panorama }: { room: Room; panorama: boolean }) {
   )
 }
 
+/**
+ * Ambient occlusion baked per room surface: soft darkening where walls meet the floor,
+ * ceiling and each other (what screen-space AO would add), cheap and renderer-agnostic.
+ */
+const aoCache = new Map<string, THREE.Texture>()
+function edgeAO(size: [number, number], edges: { l?: boolean; r?: boolean; t?: boolean; b?: boolean }) {
+  const key = `${size.join('x')}:${JSON.stringify(edges)}`
+  let t = aoCache.get(key)
+  if (t) return t
+  const ppm = 64
+  const W = Math.max(8, Math.round(size[0] * ppm))
+  const H = Math.max(8, Math.round(size[1] * ppm))
+  const c = document.createElement('canvas')
+  c.width = W
+  c.height = H
+  const ctx = c.getContext('2d')!
+  ctx.fillStyle = '#fff'
+  ctx.fillRect(0, 0, W, H)
+  ctx.globalCompositeOperation = 'multiply'
+  const band = 0.55 * ppm
+  const grad = (x0: number, y0: number, x1: number, y1: number, x: number, y: number, w: number, h: number) => {
+    const g = ctx.createLinearGradient(x0, y0, x1, y1)
+    g.addColorStop(0, 'rgb(120,120,120)')
+    g.addColorStop(0.35, 'rgb(205,205,205)')
+    g.addColorStop(1, '#fff')
+    ctx.fillStyle = g
+    ctx.fillRect(x, y, w, h)
+  }
+  if (edges.l) grad(0, 0, band, 0, 0, 0, band, H)
+  if (edges.r) grad(W, 0, W - band, 0, W - band, 0, band, H)
+  if (edges.t) grad(0, 0, 0, band, 0, 0, W, band)
+  if (edges.b) grad(0, H, 0, H - band, 0, H - band, W, band)
+  t = new THREE.CanvasTexture(c)
+  aoCache.set(key, t)
+  return t
+}
+
+/** Makes every mesh inside cast and receive shadows. */
+function ShadowGroup({ children }: { children: React.ReactNode }) {
+  const ref = useRef<THREE.Group>(null)
+  useEffect(() => {
+    ref.current?.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) {
+        o.castShadow = true
+        o.receiveShadow = true
+      }
+    })
+  })
+  return <group ref={ref}>{children}</group>
+}
+
 export default function Scene3D({ room }: { room: Room }) {
   const applied = useStore((s) => s.applied)
   const selected = useStore((s) => s.selected)
@@ -232,6 +301,8 @@ export default function Scene3D({ room }: { room: Room }) {
       <Canvas
         key={room.id}
         dpr={[1, 2]}
+        shadows="soft"
+        frameloop="demand"
         gl={{ preserveDrawingBuffer: true, antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
         camera={{ position: room.camera.position, fov: 55, near: 0.05, far: 200 }}
         onPointerMissed={() => undefined}
@@ -242,10 +313,28 @@ export default function Scene3D({ room }: { room: Room }) {
         <Controls room={room} panorama={panorama} />
         <hemisphereLight args={[t.sky, t.ground, t.ambient]} />
         <ambientLight intensity={t.ambient * 0.5} color={t.color} />
-        <directionalLight position={[w * 0.3, h * 2, d]} intensity={t.key} color={t.color} />
-        <pointLight position={[0, h - 0.3, 0]} intensity={room.outdoor ? 0 : 4} distance={Math.max(w, d) * 1.4} decay={1.4} color={t.color} />
+        <directionalLight position={[w * 0.3, h * 2, d]} intensity={t.key * 0.55} color={t.color} />
+        {/* shadow-casting key light: a soft overhead/window light that only furniture shadows */}
+        <directionalLight
+          position={room.outdoor ? [4, 9, 5] : [w * 0.35, h - 0.05, d * 0.15]}
+          target-position={[0, 0, -d * 0.15]}
+          intensity={t.key * (room.outdoor ? 1.5 : 1.0)}
+          color={t.color}
+          castShadow
+          shadow-mapSize={[2048, 2048]}
+          shadow-bias={-0.0004}
+          shadow-normalBias={0.02}
+          shadow-radius={6}
+          shadow-camera-left={-Math.max(w, d)}
+          shadow-camera-right={Math.max(w, d)}
+          shadow-camera-top={Math.max(w, d)}
+          shadow-camera-bottom={-Math.max(w, d)}
+          shadow-camera-near={0.1}
+          shadow-camera-far={30}
+        />
+        <pointLight position={[0, h - 0.3, 0]} intensity={room.outdoor ? 0 : 3} distance={Math.max(w, d) * 1.4} decay={1.4} color={t.color} />
         {room.surfaces.map((s) => (
-          <SurfaceMesh key={s.id} surface={s} app={applied[s.id]} selected={selected.includes(s.id)} onPick={onPick} onHover={setHover} />
+          <SurfaceMesh key={s.id} surface={s} app={applied[s.id]} selected={selected.includes(s.id)} outdoor={room.outdoor} onPick={onPick} onHover={setHover} />
         ))}
         {!room.outdoor && (
           <mesh position={[0, h, 0]} rotation={[Math.PI / 2, 0, 0]}>
@@ -253,8 +342,10 @@ export default function Scene3D({ room }: { room: Room }) {
             <meshStandardMaterial color="#f7f6f3" roughness={1} />
           </mesh>
         )}
-        <Furniture room={room} />
-        <ContactShadows position={[0, 0.004, 0]} scale={[w, d]} resolution={1024} opacity={0.55} blur={2.4} far={1.6} frames={1} />
+        <ShadowGroup>
+          <Furniture room={room} />
+        </ShadowGroup>
+        <ContactShadows position={[0, 0.004, 0]} scale={[w, d]} resolution={1024} opacity={0.45} blur={2.4} far={1.6} frames={1} />
       </Canvas>
       {hover && <div className="hover-tag">{hover} · click to select{' '}<kbd>Shift</kbd> to add</div>}
     </div>

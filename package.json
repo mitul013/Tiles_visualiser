@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "thumbnails": "node scripts/thumbnails.cjs"
+    "thumbnails": "node scripts/thumbnails.cjs",
+    "compare": "node scripts/compare.cjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",

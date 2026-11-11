@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# local comparison fixtures & reports (third-party reference images are never committed)
+test-fixtures/

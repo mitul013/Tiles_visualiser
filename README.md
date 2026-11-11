@@ -21,8 +21,10 @@ The feature set was mapped from the public tilesview.ai visualiser with the
 - **Left panel**: Tiles (72 SKUs, procedurally drawn: marble, wood, stone, concrete, terrazzo, ceramic,
   subway, mosaic, hexagon, encaustic patterns), Paint shades, My Upload (your own tile image), Applied list
 - **Filters & sort**: search, material, colour, size, finish, "only suitable for selected surface"
-- **Settings**: layouts (Grid, Brick, Vertical Stack, Checkered, Herringbone, Quarter Turn, Diagonal),
-  rotation 0/45/90°, grout size and colour, glossy (real reflections) / matt
+- **Settings**: 11 layouts (Grid, Brick, 1/3 Offset, Random plank, Vertical Stack, Checkered, Herringbone,
+  Quarter Turn, Diagonal, Bookmatch, Endmatch), rotation 0/45/90°, grout size and colour, glossy (real reflections) / matt
+- **Realism**: recessed grout and bevels (normal maps), per-finish roughness, handmade glaze relief, per-tile tone
+  variation, continuous marble veins across tiles, soft cast shadows, corner occlusion, marble-wrapped countertop edges
 - **Lighting**: Daylight, Warm White, Soft White, Crystal White
 - **Catalogs**: add designs, then download one or all as a PDF (render, QR link, products, quantities, price)
 - **Share**: link (the design is encoded in the URL), QR code, WhatsApp / Facebook / Email
@@ -40,6 +42,11 @@ npm run build      # production build in dist/ (relative base, deploy anywhere)
 ```
 
 Open `?visualizer` to jump straight into the room picker.
+
+### Visual comparison harness
+
+See [`docs/COMPARISON.md`](docs/COMPARISON.md). Put reference images + `cases.json` in the git-ignored
+`test-fixtures/` folder, then `npm run compare` writes a side-by-side HTML report with metrics.
 
 ### Regenerating room thumbnails
 

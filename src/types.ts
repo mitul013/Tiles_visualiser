@@ -79,11 +79,15 @@ export interface Paint {
 export type LayoutPattern =
   | 'grid'
   | 'brick'
+  | 'third'
+  | 'random'
   | 'stack'
   | 'checkered'
   | 'herringbone'
   | 'quarter'
   | 'diagonal'
+  | 'bookmatch'
+  | 'endmatch'
 
 export interface SurfaceSettings {
   layout: LayoutPattern
