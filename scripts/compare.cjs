@@ -183,6 +183,8 @@ const saveDataUrl = (url, f) => fs.writeFileSync(path.join(out, f), Buffer.from(
           meanLumRef: lc.meanRef,
           meanLumOurs: lc.meanOurs,
           outsideDiff: meanAbs(ra, rb, quadMask, 0),
+          surfaceDiff: meanAbs(ra, rb, mask, 1),
+          surfaceDiffBlur: meanAbs(ba, bb, mask, 1),
           objectsDiff: objOnSurface.some((v) => v) ? meanAbs(ra, rb, objOnSurface, 1) : 0,
           detailRef: detail(ra, ba, mask),
           detailOurs: detail(rb, bb, mask),

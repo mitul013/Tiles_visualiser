@@ -51,9 +51,13 @@ interface Place {
 }
 
 /** Enumerate tile placements for a layout inside a square of side D centred on the origin. */
-function placements(layout: SurfaceSettings['layout'], tw: number, th: number, D: number, r: () => number, cb: (p: Place) => void) {
-  const x0 = -D / 2
-  const y0 = -D / 2
+function placements(layout: SurfaceSettings['layout'], tw: number, th: number, D: number, r: () => number, cb: (p: Place) => void, W = D, H = D) {
+  // anchor the grid to the surface's top-left corner (as installers / the reference do), then extend
+  // it to cover the whole rotated square so 45° layouts still fill the surface
+  const cellW = layout === 'stack' ? Math.min(tw, th) : tw
+  const cellH = layout === 'stack' ? Math.max(tw, th) : th
+  const x0 = -W / 2 - Math.ceil((D - W) / 2 / cellW + 1) * cellW
+  const y0 = -H / 2 - Math.ceil((D - H) / 2 / cellH + 1) * cellH
   const end = D / 2
   const rows = (fn: (y: number, j: number) => void) => {
     let j = 0
@@ -288,6 +292,7 @@ export async function renderSurfaceMaps(product: Product, settings: SurfaceSetti
       }
     }
   } else {
+    const aligned = angle % 90 === 0 && settings.layout !== 'herringbone'
     placements(settings.layout, tw, th, D, r, (p) => {
       // consume random numbers in a fixed order so colour and depth agree
       const pickR = r()
@@ -296,7 +301,7 @@ export async function renderSurfaceMaps(product: Product, settings: SurfaceSetti
       if (!inView(p.x, p.y, p.w, p.h)) return
       const img = sameImage ? variants[0] : slab ? variants[(((p.i % SLAB_GRID) + SLAB_GRID) % SLAB_GRID) + SLAB_GRID * (((p.j % SLAB_GRID) + SLAB_GRID) % SLAB_GRID)] : variants[Math.floor(pickR * variants.length)]
       drawTile(img, p, (toneR - 0.5) * 2 * tone, turn180 && turnR < 0.5 ? 180 : 0)
-    })
+    }, aligned ? (angle % 180 === 0 ? W : H) : D, aligned ? (angle % 180 === 0 ? H : W) : D)
   }
   ctx.restore()
   hctx?.restore()

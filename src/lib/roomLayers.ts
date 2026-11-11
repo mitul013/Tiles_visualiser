@@ -128,7 +128,8 @@ export function generateLayers(photo: CanvasImageSource, W: number, H: number, q
   const raw = l0ctx.getImageData(0, 0, W, H).data
   let L: Float32Array<ArrayBufferLike> = new Float32Array(W * H)
   for (let i = 0; i < W * H; i++) L[i] = 0.299 * raw[i * 4] + 0.587 * raw[i * 4 + 1] + 0.114 * raw[i * 4 + 2]
-  const rad = Math.max(2, Math.round(W / 140))
+  // window large enough to erase thick veins / grout of the old surface (object shadows are larger)
+  const rad = Math.max(3, Math.round(W / 70))
   L = morph(morph(L, W, H, rad, Math.min), W, H, rad, Math.max) // opening
   L = morph(morph(L, W, H, rad, Math.max), W, H, rad, Math.min) // closing
   L = smooth(L, W, H, Math.max(2, Math.round(W / 220)))
@@ -183,9 +184,11 @@ export function generateLayers(photo: CanvasImageSource, W: number, H: number, q
       const r = L[i] / mean
       const dark = Math.max(0, 1 - r)
       const bright = Math.max(0, r - 1)
-      const s = Math.max(0.15, 1 - 0.95 * dark) // matt: soft, diffuse shadows
-      const g = Math.max(0.1, 1 - 1.15 * dark) // glossy: crisper, deeper
-      const h = Math.min(1, bright * 0.9) // highlights / sun patches / sheen
+      const s = Math.max(0.3, 1 - 0.9 * dark) // matt: soft, diffuse shadows
+      const g = Math.max(0.25, 1 - 1.05 * dark) // glossy: crisper, deeper
+      // highlights in absolute brightness (a ratio over-brightens dark surfaces)
+      const h = Math.min(0.6, Math.max(0, ((L[i] - mean) / 255) * 1.4)) // sun patches / sheen
+      void bright
       shadow.data[o] = shadow.data[o + 1] = shadow.data[o + 2] = 255 * s
       refl.data[o] = refl.data[o + 1] = refl.data[o + 2] = 255 * g
       high.data[o] = high.data[o + 1] = high.data[o + 2] = 255 * h
