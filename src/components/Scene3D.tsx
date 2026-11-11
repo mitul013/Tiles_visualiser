@@ -1,0 +1,263 @@
+import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber'
+import { ContactShadows, Edges, MeshReflectorMaterial, OrbitControls } from '@react-three/drei'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import * as THREE from 'three'
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
+import type { Room, Surface3D } from '../data/rooms'
+import type { Application, LightTheme } from '../types'
+import { findPaint, findProduct, useStore } from '../store'
+import { renderPaint, renderTiledSurface } from '../lib/layout'
+import { Furniture } from './Furniture'
+
+const THEMES: Record<LightTheme, { color: string; ambient: number; key: number; sky: string; ground: string; bg: string }> = {
+  daylight: { color: '#ffffff', ambient: 0.45, key: 1.3, sky: '#eef4ff', ground: '#cdbfae', bg: '#dfe9f3' },
+  warm: { color: '#ffd7a6', ambient: 0.45, key: 1.35, sky: '#ffe6c7', ground: '#a88b6c', bg: '#e9d7c0' },
+  soft: { color: '#fff1dd', ambient: 0.6, key: 1.2, sky: '#fff6ea', ground: '#c9b8a2', bg: '#ece4d8' },
+  crystal: { color: '#e4efff', ambient: 0.6, key: 1.65, sky: '#e8f1ff', ground: '#b9c3cf', bg: '#dbe6f5' },
+}
+
+function useSurfaceTexture(surface: Surface3D, app: Application | undefined) {
+  const [tex, setTex] = useState<THREE.Texture | null>(null)
+  const gl = useThree((s) => s.gl)
+  const key = JSON.stringify(app ?? null)
+  useEffect(() => {
+    let cancelled = false
+    let made: THREE.Texture | null = null
+    ;(async () => {
+      if (!app) return setTex(null)
+      if (app.kind === 'paint') {
+        const p = findPaint(app.paintId)
+        if (!p) return
+        const t = new THREE.CanvasTexture(renderPaint(p))
+        t.wrapS = t.wrapT = THREE.RepeatWrapping
+        t.repeat.set(surface.size[0] * 2, surface.size[1] * 2)
+        t.colorSpace = THREE.SRGBColorSpace
+        made = t
+      } else {
+        const p = findProduct(app.productId)
+        if (!p) return
+        const c = await renderTiledSurface(p, app.settings, surface.size)
+        if (cancelled) return
+        const t = new THREE.CanvasTexture(c)
+        t.colorSpace = THREE.SRGBColorSpace
+        t.anisotropy = gl.capabilities.getMaxAnisotropy()
+        made = t
+      }
+      if (!cancelled) setTex(made)
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, surface.id, surface.size[0], surface.size[1]])
+  // dispose textures we replace
+  const prev = useRef<THREE.Texture | null>(null)
+  useEffect(() => {
+    if (prev.current && prev.current !== tex) prev.current.dispose()
+    prev.current = tex
+  }, [tex])
+  return tex
+}
+
+function SurfaceMesh({ surface, app, selected, onPick, onHover }: { surface: Surface3D; app?: Application; selected: boolean; onPick: (id: string, additive: boolean) => void; onHover: (label: string | null) => void }) {
+  const tex = useSurfaceTexture(surface, app)
+  const finish = app?.kind === 'tile' ? app.settings.finish : app?.finish ?? 'matt'
+  const glossy = finish === 'glossy'
+  const horizontal = surface.type === 'floor'
+  const handleClick = (e: ThreeEvent<MouseEvent>) => {
+    if (e.delta > 6) return
+    if (e.intersections[0]?.object !== e.object) return
+    e.stopPropagation()
+    onPick(surface.id, e.shiftKey || e.metaKey || e.ctrlKey)
+  }
+  return (
+    <mesh
+      position={surface.position}
+      rotation={surface.rotation}
+      onClick={handleClick}
+      onPointerMove={(e) => {
+        if (e.intersections[0]?.object === e.object) {
+          onHover(surface.label)
+          document.body.style.cursor = 'pointer'
+        }
+      }}
+      onPointerOut={() => {
+        onHover(null)
+        document.body.style.cursor = ''
+      }}
+      userData={{ surfaceId: surface.id }}
+    >
+      <planeGeometry args={surface.size} />
+      {horizontal && glossy ? (
+        <MeshReflectorMaterial
+          key={tex?.uuid ?? 'none'}
+          map={tex ?? undefined}
+          color={tex ? '#ffffff' : '#cccccc'}
+          blur={[400, 120]}
+          resolution={1024}
+          mixBlur={1}
+          mixStrength={0.55}
+          mirror={0.35}
+          roughness={0.25}
+          depthScale={0.6}
+          minDepthThreshold={0.4}
+          maxDepthThreshold={1.2}
+          metalness={0}
+        />
+      ) : (
+        <meshStandardMaterial key={tex?.uuid ?? 'none'} map={tex ?? undefined} color={tex ? '#ffffff' : '#d9d9d9'} roughness={glossy ? 0.12 : 0.85} envMapIntensity={glossy ? 0.9 : 0.25} />
+      )}
+      {selected && <Edges color="#1e88ff" lineWidth={3} />}
+    </mesh>
+  )
+}
+
+function Env() {
+  const { gl, scene } = useThree()
+  useEffect(() => {
+    const pmrem = new THREE.PMREMGenerator(gl)
+    const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+    scene.environment = env
+    scene.environmentIntensity = 0.45
+    return () => {
+      scene.environment = null
+      env.dispose()
+      pmrem.dispose()
+    }
+  }, [gl, scene])
+  return null
+}
+
+/** Registers a capture() function on the store so toolbars can grab a JPEG of the view. */
+function CaptureBridge({ roomId }: { roomId: string }) {
+  const { gl, scene, camera, size } = useThree()
+  const setCapture = useStore((s) => s.setCapture)
+  const setOriginal = useStore((s) => s.setOriginalShot)
+  useEffect(() => {
+    const capture = (hd = false) => {
+      const prevRatio = gl.getPixelRatio()
+      if (hd) {
+        gl.setPixelRatio(Math.min(3, prevRatio * 2))
+        gl.setSize(size.width, size.height, false)
+      }
+      gl.render(scene, camera)
+      const url = gl.domElement.toDataURL('image/jpeg', hd ? 0.95 : 0.85)
+      if (hd) {
+        gl.setPixelRatio(prevRatio)
+        gl.setSize(size.width, size.height, false)
+      }
+      return url
+    }
+    setCapture(capture)
+    return () => setCapture(null)
+  }, [gl, scene, camera, size, setCapture])
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!useStore.getState().originalShot) {
+        gl.render(scene, camera)
+        setOriginal(gl.domElement.toDataURL('image/jpeg', 0.85))
+      }
+    }, 1800)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId])
+  return null
+}
+
+function Controls({ room, panorama }: { room: Room; panorama: boolean }) {
+  const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera
+  const ref = useRef<React.ComponentRef<typeof OrbitControls>>(null)
+  const { w, d, h } = room.dims
+  useEffect(() => {
+    if (panorama) {
+      camera.position.set(0, 1.6, 0.01)
+      camera.fov = 75
+      ref.current?.target.set(0, 1.6, 0)
+    } else {
+      camera.position.set(...room.camera.position)
+      camera.fov = 55
+      ref.current?.target.set(...room.camera.target)
+    }
+    camera.updateProjectionMatrix()
+    ref.current?.update()
+  }, [panorama, room, camera])
+  // keep the camera inside the room
+  const clamp = () => {
+    if (room.outdoor || panorama) return
+    const m = 0.15
+    camera.position.x = THREE.MathUtils.clamp(camera.position.x, -w / 2 + m, w / 2 - m)
+    camera.position.z = THREE.MathUtils.clamp(camera.position.z, -d / 2 + m, d / 2 - m)
+    camera.position.y = THREE.MathUtils.clamp(camera.position.y, 0.3, h - 0.2)
+  }
+  return panorama ? (
+    <OrbitControls ref={ref} enableZoom={false} enablePan={false} rotateSpeed={-0.35} target={[0, 1.6, 0]} />
+  ) : (
+    <OrbitControls
+      ref={ref}
+      onChange={clamp}
+      enablePan={false}
+      minDistance={0.5}
+      maxDistance={room.outdoor ? 9 : Math.max(w, d) * 0.95}
+      minPolarAngle={Math.PI * 0.25}
+      maxPolarAngle={Math.PI * 0.56}
+      minAzimuthAngle={room.outdoor ? -0.9 : -0.75}
+      maxAzimuthAngle={room.outdoor ? 0.9 : 0.75}
+      rotateSpeed={0.5}
+      zoomSpeed={0.6}
+      target={room.camera.target}
+    />
+  )
+}
+
+export default function Scene3D({ room }: { room: Room }) {
+  const applied = useStore((s) => s.applied)
+  const selected = useStore((s) => s.selected)
+  const select = useStore((s) => s.select)
+  const theme = useStore((s) => s.theme)
+  const panorama = useStore((s) => s.panorama)
+  const [hover, setHover] = useState<string | null>(null)
+  const t = THEMES[theme]
+  const { w, d, h } = room.dims
+
+  const onPick = (id: string, additive: boolean) => {
+    const cur = useStore.getState().selected
+    if (additive) select(cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id])
+    else select([id])
+  }
+
+  const bg = useMemo(() => new THREE.Color(room.outdoor ? '#bcd7ee' : t.bg), [room.outdoor, t.bg])
+
+  return (
+    <div className="scene-wrap">
+      <Canvas
+        key={room.id}
+        dpr={[1, 2]}
+        gl={{ preserveDrawingBuffer: true, antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
+        camera={{ position: room.camera.position, fov: 55, near: 0.05, far: 200 }}
+        onPointerMissed={() => undefined}
+        scene={{ background: bg }}
+      >
+        <Env />
+        <CaptureBridge roomId={room.id} />
+        <Controls room={room} panorama={panorama} />
+        <hemisphereLight args={[t.sky, t.ground, t.ambient]} />
+        <ambientLight intensity={t.ambient * 0.5} color={t.color} />
+        <directionalLight position={[w * 0.3, h * 2, d]} intensity={t.key} color={t.color} />
+        <pointLight position={[0, h - 0.3, 0]} intensity={room.outdoor ? 0 : 4} distance={Math.max(w, d) * 1.4} decay={1.4} color={t.color} />
+        {room.surfaces.map((s) => (
+          <SurfaceMesh key={s.id} surface={s} app={applied[s.id]} selected={selected.includes(s.id)} onPick={onPick} onHover={setHover} />
+        ))}
+        {!room.outdoor && (
+          <mesh position={[0, h, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[w, d]} />
+            <meshStandardMaterial color="#f7f6f3" roughness={1} />
+          </mesh>
+        )}
+        <Furniture room={room} />
+        <ContactShadows position={[0, 0.004, 0]} scale={[w, d]} resolution={1024} opacity={0.55} blur={2.4} far={1.6} frames={1} />
+      </Canvas>
+      {hover && <div className="hover-tag">{hover} · click to select{' '}<kbd>Shift</kbd> to add</div>}
+    </div>
+  )
+}
+
