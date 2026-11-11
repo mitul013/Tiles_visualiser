@@ -1798,3 +1798,20 @@ input[type='range'] {
 .editor-stage canvas.obj-mask {
   opacity: 0.45;
 }
+.drop.small {
+  min-height: 110px;
+  padding: 8px;
+  background: repeating-conic-gradient(#eee 0 25%, #fff 0 50%) 50% / 16px 16px;
+}
+.drop.small img {
+  max-height: 140px;
+}
+.cutout-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.editor-side .seg button {
+  font-size: 12px;
+  padding: 6px 8px;
+}

@@ -106,7 +106,15 @@ const saveDataUrl = (url, f) => fs.writeFileSync(path.join(out, f), Buffer.from(
       })
       return page.evaluate(() => window.__tv.useStore.getState().capture?.() ?? '')
     }
-    const photoShot = await shoot(3500)
+    await page.waitForSelector(`canvas[data-room="photo-test-${c.id}"][data-ready="1"]`, { timeout: 60000 })
+    const photoShot = await shoot(500)
+    // save the room's cut-out layers (as the app generated / stored them)
+    await page.waitForFunction((id) => window.__tv.useStore.getState().photoRooms.find((r) => r.id === id)?.layers, `photo-test-${c.id}`, { timeout: 20000 }).catch(() => {})
+    const layers = await page.evaluate((id) => window.__tv.useStore.getState().photoRooms.find((r) => r.id === id)?.layers ?? null, `photo-test-${c.id}`)
+    if (layers) {
+      fs.writeFileSync(path.join(out, `${c.id}-layer-matt.png`), Buffer.from(layers.matt.split(',')[1], 'base64'))
+      fs.writeFileSync(path.join(out, `${c.id}-layer-glossy.png`), Buffer.from(layers.glossy.split(',')[1], 'base64'))
+    }
     saveDataUrl(photoShot, `${c.id}-photo.jpg`)
 
     // metrics between reference and our re-tile, inside / outside the marked quad

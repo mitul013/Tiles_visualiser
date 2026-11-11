@@ -3,101 +3,27 @@ import { findPaint, findProduct, useStore, type PhotoRoom } from '../store'
 import { renderPaint, renderTiledSurface } from '../lib/layout'
 import { loadImage } from '../lib/tileArt'
 import { drawPerspective, pointInQuad, quadPath, type Pt } from '../lib/homography'
+import { generateLayers, type RoomLayers } from '../lib/roomLayers'
 import type { Application, LightTheme } from '../types'
 
 const TINT: Record<LightTheme, string | null> = { daylight: null, warm: 'rgba(255,170,80,0.10)', soft: 'rgba(255,220,180,0.08)', crystal: 'rgba(150,190,255,0.08)' }
 
-interface Shading {
-  x0: number
-  y0: number
-  w: number
-  h: number
-  /** per-pixel light factor; 1 = the surface's average light */
-  f: Float32Array
-}
-
-/**
- * Lighting of one surface taken from the photo: luminance blurred slightly (to drop the old
- * tile's texture/grout) and normalised to the surface mean, so shadows darken and highlights
- * brighten the new tile while its average colour stays true.
- */
-function shadingFor(photo: HTMLImageElement, q: Pt[], W: number, H: number, strength = 0.9): Shading {
-  const xs = q.map((p) => p[0])
-  const ys = q.map((p) => p[1])
-  const x0 = Math.max(0, Math.floor(Math.min(...xs)))
-  const y0 = Math.max(0, Math.floor(Math.min(...ys)))
-  const x1 = Math.min(W, Math.ceil(Math.max(...xs)))
-  const y1 = Math.min(H, Math.ceil(Math.max(...ys)))
-  const w = Math.max(1, x1 - x0)
-  const h = Math.max(1, y1 - y0)
-  const c = document.createElement('canvas')
-  c.width = W
-  c.height = H
-  const ctx = c.getContext('2d', { willReadFrequently: true })!
-  ctx.filter = `blur(${Math.max(2, W / 200)}px)`
-  ctx.drawImage(photo, 0, 0, W, H)
-  const d = ctx.getImageData(x0, y0, w, h).data
-  const L = new Float32Array(w * h)
-  let sum = 0
-  let n = 0
-  for (let y = 0; y < h; y++)
-    for (let x = 0; x < w; x++) {
-      const i = y * w + x
-      L[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]
-      if ((x % 2 === 0 && y % 2 === 0) && pointInQuad([x0 + x, y0 + y], q)) {
-        sum += L[i]
-        n++
-      }
-    }
-  const mean = Math.max(8, n ? sum / n : 128)
-  const f = new Float32Array(w * h)
-  for (let i = 0; i < f.length; i++) f[i] = Math.min(1.8, 1 + strength * (L[i] / mean - 1))
-  return { x0, y0, w, h, f }
-}
-
-function applyShading(lc: CanvasRenderingContext2D, s: Shading) {
-  const img = lc.getImageData(s.x0, s.y0, s.w, s.h)
-  const d = img.data
-  for (let i = 0; i < s.f.length; i++) {
-    const k = s.f[i]
-    d[i * 4] = Math.min(255, d[i * 4] * k)
-    d[i * 4 + 1] = Math.min(255, d[i * 4 + 1] * k)
-    d[i * 4 + 2] = Math.min(255, d[i * 4 + 2] * k)
-  }
-  lc.putImageData(img, s.x0, s.y0)
-}
-
-function featherMask(q: Pt[], W: number, H: number) {
-  const c = document.createElement('canvas')
-  c.width = W
-  c.height = H
-  const ctx = c.getContext('2d')!
-  ctx.filter = `blur(${Math.max(0.6, W / 1400)}px)`
-  quadPath(ctx, q)
-  ctx.fillStyle = '#000'
-  ctx.fill()
-  return c
-}
-
-const objLayerCache = new Map<string, Promise<HTMLCanvasElement>>()
-/** Photo pixels inside the object mask (with a slightly softened edge), ready to draw over the tiles. */
-function objectLayer(photo: HTMLImageElement, mask: string, W: number, H: number) {
-  const key = `${photo.src.length}:${mask.length}:${mask.slice(-64)}`
-  let p = objLayerCache.get(key)
+const layerCache = new Map<string, Promise<RoomLayers>>()
+/** The room's cut-out overlays: uploaded/saved ones, or generated once from surfaces + objects. */
+function getLayers(room: PhotoRoom, photo: HTMLImageElement): Promise<RoomLayers> {
+  if (room.layers) return Promise.resolve(room.layers)
+  const key = `${room.id}:${room.objMask?.length ?? 0}:${JSON.stringify(room.surfaces.map((s) => s.quad))}`
+  let p = layerCache.get(key)
   if (!p) {
-    p = loadImage(mask).then((m) => {
-      const c = document.createElement('canvas')
-      c.width = W
-      c.height = H
-      const ctx = c.getContext('2d')!
-      ctx.filter = `blur(${Math.max(0.5, W / 1600)}px)`
-      ctx.drawImage(m, 0, 0, W, H)
-      ctx.filter = 'none'
-      ctx.globalCompositeOperation = 'source-in'
-      ctx.drawImage(photo, 0, 0, W, H)
-      return c
-    })
-    objLayerCache.set(key, p)
+    p = (async () => {
+      const obj = room.objMask ? await loadImage(room.objMask) : null
+      const quads = room.surfaces.map((s) => s.quad.map(([x, y]) => [x * room.width, y * room.height] as Pt))
+      const layers = generateLayers(photo, room.width, room.height, quads, obj)
+      // persist so the room loads instantly next time
+      useStore.setState((st) => ({ photoRooms: st.photoRooms.map((r) => (r.id === room.id ? { ...r, layers } : r)) }))
+      return layers
+    })()
+    layerCache.set(key, p)
   }
   return p
 }
@@ -127,7 +53,6 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
   const setOriginal = useStore((s) => s.setOriginalShot)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
-  const shading = useRef<Map<string, Shading>>(new Map())
   const [hover, setHover] = useState<string | null>(null)
 
   const W = room.width
@@ -141,49 +66,47 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
       const photo = await loadImage(room.image)
       const cv = canvasRef.current
       if (!cv || cancelled) return
-      const layers: { q: Pt[]; img: HTMLCanvasElement; id: string; glossy: boolean }[] = []
-      for (const s of quads) {
-        const app = applied[s.id]
+      cv.dataset.ready = '0'
+      cv.dataset.room = room.id
+      const tiles: { q: Pt[]; img: HTMLCanvasElement; id: string; glossy: boolean }[] = []
+      for (const sf of quads) {
+        const app = applied[sf.id]
         if (!app) continue
-        const img = await surfaceImage(app, s.size)
-        if (img) layers.push({ q: s.q, img, id: s.id, glossy: (app.kind === 'tile' ? app.settings.finish : app.finish) === 'glossy' })
+        const img = await surfaceImage(app, sf.size)
+        if (img) tiles.push({ q: sf.q, img, id: sf.id, glossy: (app.kind === 'tile' ? app.settings.finish : app.finish) === 'glossy' })
       }
+      const layers = await getLayers(room, photo)
+      const [matt, glossy] = await Promise.all([loadImage(layers.matt), loadImage(layers.glossy)])
       if (cancelled) return
       const ctx = cv.getContext('2d')!
       ctx.globalCompositeOperation = 'source-over'
+      // 1. original photo
       ctx.drawImage(photo, 0, 0, W, H)
       if (!useStore.getState().originalShot) setOriginal(cv.toDataURL('image/jpeg', 0.85))
-      for (const l of layers) {
-        const layer = document.createElement('canvas')
-        layer.width = W
-        layer.height = H
-        const lc = layer.getContext('2d', { willReadFrequently: true })!
-        drawPerspective(lc, l.img, l.q)
-        let sh = shading.current.get(l.id)
-        if (!sh) {
-          sh = shadingFor(photo, l.q, W, H)
-          shading.current.set(l.id, sh)
-        }
-        applyShading(lc, sh)
-        if (l.glossy) {
-          lc.globalCompositeOperation = 'screen'
-          const g = lc.createLinearGradient(0, 0, W, H)
-          g.addColorStop(0, 'rgba(255,255,255,0.10)')
-          g.addColorStop(0.5, 'rgba(255,255,255,0)')
-          g.addColorStop(1, 'rgba(255,255,255,0.06)')
-          lc.fillStyle = g
-          lc.fillRect(0, 0, W, H)
-        }
-        // feathered surface mask: soft 1-2px edge instead of a hard polygon cut
-        lc.globalCompositeOperation = 'destination-in'
-        lc.drawImage(featherMask(l.q, W, H), 0, 0)
-        ctx.drawImage(layer, 0, 0)
+      // 2. tiles in perspective (slightly overscanned; the cut-out overlay defines the exact edge)
+      for (const t of tiles) {
+        ctx.save()
+        quadPath(ctx, t.q)
+        ctx.clip()
+        drawPerspective(ctx, t.img, t.q)
+        ctx.restore()
       }
-      // foreground objects go back on top of every new surface
-      if (room.objMask) {
-        const objs = await objectLayer(photo, room.objMask, W, H)
-        ctx.drawImage(objs, 0, 0)
+      // 3. cut-out overlay: matt everywhere, glossy variant inside glossy surfaces
+      const ov = document.createElement('canvas')
+      ov.width = W
+      ov.height = H
+      const octx = ov.getContext('2d')!
+      octx.drawImage(matt, 0, 0, W, H)
+      for (const t of tiles.filter((x) => x.glossy)) {
+        octx.save()
+        quadPath(octx, t.q)
+        octx.clip()
+        octx.clearRect(0, 0, W, H)
+        octx.drawImage(glossy, 0, 0, W, H)
+        octx.restore()
       }
+      ctx.drawImage(ov, 0, 0)
+      cv.dataset.ready = '1'
       const tint = TINT[theme]
       if (tint) {
         ctx.fillStyle = tint
@@ -194,7 +117,7 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applied, theme, room.id, room.objMask])
+  }, [applied, theme, room.id, room.objMask, room.layers])
 
   // selection overlay
   useEffect(() => {

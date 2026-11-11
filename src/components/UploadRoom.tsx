@@ -3,6 +3,7 @@ import { useStore, type PhotoSurface } from '../store'
 import type { SurfaceType } from '../types'
 import { Icon, Modal, toast } from './ui'
 import { refineMaskCanvas } from '../lib/objectMask'
+import type { RoomLayers } from '../lib/roomLayers'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
@@ -25,11 +26,29 @@ export default function UploadRoomModal() {
   const [active, setActive] = useState<string | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const maskRef = useRef<HTMLCanvasElement>(null)
-  const [mode, setMode] = useState<'surfaces' | 'objects'>('surfaces')
+  const [mode, setMode] = useState<'surfaces' | 'objects' | 'cutout'>('surfaces')
   const [brush, setBrush] = useState(28)
   const [erase, setErase] = useState(false)
   const [hasMask, setHasMask] = useState(false)
   const [snap, setSnap] = useState(true)
+  /** optional uploaded cut-out overlays (transparent where tiles go) */
+  const [cutout, setCutout] = useState<{ matt?: string; glossy?: string }>({})
+  const loadCutout = (kind: 'matt' | 'glossy', f?: File) => {
+    if (!f || !img) return
+    const reader = new FileReader()
+    reader.onload = async () => {
+      const im = new Image()
+      im.src = reader.result as string
+      await im.decode()
+      // normalise to the photo's size as PNG (keeps transparency)
+      const c = document.createElement('canvas')
+      c.width = img.w
+      c.height = img.h
+      c.getContext('2d')!.drawImage(im, 0, 0, img.w, img.h)
+      setCutout((cur) => ({ ...cur, [kind]: c.toDataURL('image/png') }))
+    }
+    reader.readAsDataURL(f)
+  }
   const [busy, setBusy] = useState(false)
   /** the user's rough strokes; the visible mask is these strokes snapped to object outlines */
   const roughRef = useRef<HTMLCanvasElement | null>(null)
@@ -128,7 +147,8 @@ export default function UploadRoomModal() {
     if (!img) return
     const id = `photo-${uid()}`
     const objMask = hasMask && maskRef.current ? maskRef.current.toDataURL('image/png') : undefined
-    addRoom({ id, name, image: img.src, width: img.w, height: img.h, surfaces, objMask, createdAt: Date.now() })
+    const layers: RoomLayers | undefined = cutout.matt ? { matt: cutout.matt, glossy: cutout.glossy ?? cutout.matt, source: 'uploaded' } : undefined
+    addRoom({ id, name, image: img.src, width: img.w, height: img.h, surfaces, objMask, layers, createdAt: Date.now() })
     openRoom(id, {})
     useStore.getState().select(surfaces.filter((s) => s.type === 'floor').map((s) => s.id).slice(0, 1))
     close()
@@ -244,8 +264,29 @@ export default function UploadRoomModal() {
               <button className={mode === 'objects' ? 'on' : ''} onClick={() => setMode('objects')}>
                 2. Objects in front
               </button>
+              <button className={mode === 'cutout' ? 'on' : ''} onClick={() => setMode('cutout')}>
+                3. Cut-out layers
+              </button>
             </div>
-            {mode === 'objects' ? (
+            {mode === 'cutout' && (
+              <div className="cutout-panel">
+                <p className="hint">
+                  Optional, most precise: upload the room as a <b>cut-out</b> (PNG/WebP, same photo with the tile area <b>transparent</b> and furniture kept). Shadows can be left as semi-transparent dark pixels. If you skip this, the cut-out is generated from your surfaces and painted objects.
+                </p>
+                {(['matt', 'glossy'] as const).map((k) => (
+                  <label key={k} className="drop small">
+                    {cutout[k] ? <img src={cutout[k]} alt={`${k} cut-out`} /> : <span>{k === 'matt' ? 'Matt cut-out layer' : 'Glossy cut-out layer (optional)'}</span>}
+                    <input type="file" accept="image/png,image/webp" hidden onChange={(e) => loadCutout(k, e.target.files?.[0])} />
+                  </label>
+                ))}
+                {cutout.matt && (
+                  <button className="btn sm" onClick={() => setCutout({})}>
+                    Remove cut-out layers
+                  </button>
+                )}
+              </div>
+            )}
+            {mode === 'cutout' ? null : mode === 'objects' ? (
               <>
                 <p className="hint">Roughly paint over anything standing in front of the floor or walls (sofa, bed, taps, plants, window frames). The outline is detected automatically and those pixels stay on top, untouched, whatever tiles or colours you apply.</p>
                 <label className="inline">

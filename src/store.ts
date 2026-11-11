@@ -27,6 +27,8 @@ export interface PhotoRoom {
    * composited back on top of the tiles, so new tiles never cover them.
    */
   objMask?: string
+  /** cut-out overlays (matt / glossy): transparent where tiles go, shadows baked in */
+  layers?: import('./lib/roomLayers').RoomLayers
   createdAt: number
 }
 
