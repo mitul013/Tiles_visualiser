@@ -163,16 +163,6 @@ function Door({ p, ry = 0 }: { p: V3; ry?: number }) {
   )
 }
 
-function Rug({ p, w, d, c, c2 }: { p: V3; w: number; d: number; c: string; c2: string }) {
-  return (
-    <G p={p}>
-      <Box p={[0, 0.006, 0]} s={[w, 0.012, d]} c={c} r={1} />
-      <Box p={[0, 0.0125, 0]} s={[w - 0.3, 0.002, d - 0.3]} c={c2} r={1} />
-      <Box p={[0, 0.014, 0]} s={[w - 0.5, 0.002, d - 0.5]} c={c} r={1} />
-    </G>
-  )
-}
-
 function Living({ room }: { room: Room }) {
   const { w, d } = room.dims
   return (
@@ -180,7 +170,6 @@ function Living({ room }: { room: Room }) {
       <Sofa p={[0, 0, -d / 2 + 0.75]} />
       <Armchair p={[-1.9, 0, -0.4]} ry={0.9} />
       <Armchair p={[1.9, 0, -0.4]} ry={-0.9} c="#7a8a7c" />
-      <Rug p={[0, 0, -1.05]} w={2.4} d={1.5} c="#d9cfbf" c2="#a8937a" />
       <Table p={[0, 0, -0.9]} w={1.2} d={0.6} h={0.4} top="#3b2c22" />
       <Ball p={[0.25, 0.48, -0.9]} rad={0.07} c="#c96f4a" r={0.4} />
       <FloorLamp p={[-1.55, 0, -d / 2 + 0.45]} />
@@ -218,7 +207,6 @@ function Bedroom({ room }: { room: Room }) {
           </mesh>
         </G>
       ))}
-      <Rug p={[0, 0, z + 0.6]} w={2.6} d={1.8} c="#cbbfae" c2="#e8e1d6" />
       <Window p={[-w / 2 + 0.001, 1.5, 0.2]} ry={Math.PI / 2} w={1.6} h={1.5} />
       <Art p={[0, 1.85, -d / 2 + 0.001]} w={1.0} h={0.55} colors={['#ece6dc', '#9fb0a6', '#c7a98a']} />
       <Box p={[w / 2 - 0.3, 0.45, 0.6]} s={[0.55, 0.9, 1.4]} c="#e8e2d6" r={0.6} />
@@ -379,7 +367,6 @@ function Lobby({ room }: { room: Room }) {
       <Sofa p={[-2.6, 0, 1.6]} ry={Math.PI / 2} c="#2f4a5b" w={2.0} />
       <Sofa p={[2.6, 0, 1.6]} ry={-Math.PI / 2} c="#2f4a5b" w={2.0} />
       <Table p={[0, 0, 1.6]} w={1.0} d={1.0} h={0.42} round top="#2b2b2b" leg="#c9a24a" />
-      <Rug p={[0, 0, 1.6]} w={4.2} d={2.6} c="#9a8a72" c2="#c9b48f" />
       <Plant p={[-w / 2 + 0.6, 0, -d / 2 + 0.6]} scale={1.6} />
       <Plant p={[w / 2 - 0.6, 0, -d / 2 + 0.6]} scale={1.6} />
       <G p={[0, h - 0.6, 1.6]}>

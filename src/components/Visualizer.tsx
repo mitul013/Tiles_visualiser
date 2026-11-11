@@ -11,6 +11,7 @@ import PhotoScene from './PhotoScene'
 import RoomSelect from './RoomSelect'
 import { addCurrentToCatalog } from './Modals'
 import { downloadDataUrl, Icon, IconBtn, Swatch } from './ui'
+import { LANGUAGES, useT, type Lang } from '../lib/i18n'
 
 const Scene3D = lazy(() => import('./Scene3D'))
 
@@ -21,7 +22,7 @@ const THEMES: { id: LightTheme; label: string; color: string }[] = [
   { id: 'crystal', label: 'Crystal White', color: '#e4efff' },
 ]
 
-const TYPE_LABEL: Record<SurfaceType, string> = { floor: 'Floor', wall: 'Wall', countertop: 'Counter Top', backsplash: 'Backsplash' }
+const TYPE_LABEL: Record<SurfaceType, string> = { floor: 'Floor', wall: 'Wall', countertop: 'Counter Top', backsplash: 'Backsplash', ceiling: 'Ceiling', rug: 'Rug' }
 
 function randomDesign() {
   const s = useStore.getState()
@@ -43,6 +44,7 @@ function randomDesign() {
 
 function Toolbar({ rootRef }: { rootRef: React.RefObject<HTMLDivElement | null> }) {
   const s = useStore()
+  const t = useT()
   const [menu, setMenu] = useState<null | 'theme' | 'download' | 'more'>(null)
   const room = getRoom(s.roomId)
   const fs = () => {
@@ -56,14 +58,14 @@ function Toolbar({ rootRef }: { rootRef: React.RefObject<HTMLDivElement | null> 
   }
   return (
     <div className="toolbar" onMouseLeave={() => setMenu(null)}>
-      <IconBtn icon="undo" label="Undo" onClick={s.undo} disabled={!s.past.length} />
-      <IconBtn icon="redo" label="Redo" onClick={s.redo} disabled={!s.future.length} />
-      <IconBtn icon="reset" label="Reset" onClick={s.reset} />
-      <IconBtn icon="shuffle" label="Random" onClick={randomDesign} />
-      <IconBtn icon="compare" label="Compare" onClick={() => s.setModal('compare')} />
+      <IconBtn icon="undo" label={t('Undo')} onClick={s.undo} disabled={!s.past.length} />
+      <IconBtn icon="redo" label={t('Redo')} onClick={s.redo} disabled={!s.future.length} />
+      <IconBtn icon="reset" label={t('Reset')} onClick={s.reset} />
+      <IconBtn icon="shuffle" label={t('Random')} onClick={randomDesign} />
+      <IconBtn icon="compare" label={t('Compare')} onClick={() => s.setModal('compare')} />
       {room && <IconBtn icon="pano" label="360°" active={s.panorama} onClick={s.togglePanorama} />}
       <div className="menu-wrap">
-        <IconBtn icon="sun" label="Lighting" active={menu === 'theme'} onClick={() => setMenu(menu === 'theme' ? null : 'theme')} />
+        <IconBtn icon="sun" label={t('Lighting')} active={menu === 'theme'} onClick={() => setMenu(menu === 'theme' ? null : 'theme')} />
         {menu === 'theme' && (
           <div className="menu">
             {THEMES.map((t) => (
@@ -83,12 +85,12 @@ function Toolbar({ rootRef }: { rootRef: React.RefObject<HTMLDivElement | null> 
         )}
       </div>
       <span className="sep" />
-      <IconBtn icon="save" label="Save" onClick={() => s.setModal('save')} />
-      <IconBtn icon="book" label="Catalogs" badge={s.catalogs.length} onClick={() => s.setModal('catalog')} />
-      <IconBtn icon="cart" label="Cart" badge={s.cart.length} onClick={() => s.setModal('cart')} />
-      <IconBtn icon="share" label="Share" onClick={() => s.setModal('share')} />
+      <IconBtn icon="save" label={t('Save')} onClick={() => s.setModal('save')} />
+      <IconBtn icon="book" label={t('Catalogs')} badge={s.catalogs.length} onClick={() => s.setModal('catalog')} />
+      <IconBtn icon="cart" label={t('Cart')} badge={s.cart.length} onClick={() => s.setModal('cart')} />
+      <IconBtn icon="share" label={t('Share')} onClick={() => s.setModal('share')} />
       <div className="menu-wrap">
-        <IconBtn icon="download" label="Download" active={menu === 'download'} onClick={() => setMenu(menu === 'download' ? null : 'download')} />
+        <IconBtn icon="download" label={t('Download')} active={menu === 'download'} onClick={() => setMenu(menu === 'download' ? null : 'download')} />
         {menu === 'download' && (
           <div className="menu right">
             <button onClick={() => dl(true)}>HD image</button>
@@ -105,7 +107,7 @@ function Toolbar({ rootRef }: { rootRef: React.RefObject<HTMLDivElement | null> 
         )}
       </div>
       <div className="menu-wrap">
-        <IconBtn icon="settings" label="More" active={menu === 'more'} onClick={() => setMenu(menu === 'more' ? null : 'more')} />
+        <IconBtn icon="settings" label={t('More')} active={menu === 'more'} onClick={() => setMenu(menu === 'more' ? null : 'more')} />
         {menu === 'more' && (
           <div className="menu right">
             <button onClick={() => (setMenu(null), s.setModal('calculator'))}>
@@ -120,6 +122,9 @@ function Toolbar({ rootRef }: { rootRef: React.RefObject<HTMLDivElement | null> 
             <button onClick={() => (setMenu(null), fs())}>
               <Icon name="full" size={15} /> Full screen
             </button>
+            <button onClick={() => (setMenu(null), s.setModal('rate'))}>
+              <Icon name="heart" size={15} /> {t('Rate your experience')}
+            </button>
             <button onClick={() => (setMenu(null), s.toggleDark())}>
               <Icon name="moon" size={15} /> {s.dark ? 'Light theme' : 'Dark theme'}
             </button>
@@ -131,6 +136,7 @@ function Toolbar({ rootRef }: { rootRef: React.RefObject<HTMLDivElement | null> 
 }
 
 function SurfaceChips() {
+  const t = useT()
   const roomId = useStore((s) => s.roomId)
   const photoRooms = useStore((s) => s.photoRooms)
   const selected = useStore((s) => s.selected)
@@ -142,13 +148,12 @@ function SurfaceChips() {
   const wallFloor = [...idsOf('floor'), ...idsOf('wall')]
   return (
     <div className="surface-chips">
-      <span className="lbl">Surface:</span>
-      {types.map((t) => {
-        const ids = idsOf(t)
+      <span className="lbl">{t('Surface:')}</span>
+      {types.map((ty) => {
+        const ids = idsOf(ty)
         return (
-          <button key={t} className={same(selected, ids) ? 'on' : ''} onClick={() => select(ids)}>
-            {TYPE_LABEL[t]}
-            {ids.length > 1 ? 's' : ''}
+          <button key={ty} className={same(selected, ids) ? 'on' : ''} onClick={() => select(ids)}>
+            {t(TYPE_LABEL[ty] + (ids.length > 1 ? 's' : ''))}
           </button>
         )
       })}
@@ -170,6 +175,7 @@ function SurfaceChips() {
 }
 
 function AppliedBar() {
+  const t = useT()
   const roomId = useStore((s) => s.roomId)
   const photoRooms = useStore((s) => s.photoRooms)
   const applied = useStore((s) => s.applied)
@@ -227,7 +233,7 @@ function AppliedBar() {
   }, 0)
   return (
     <div className="applied-bar">
-      <span className="lbl">Applied products</span>
+      <span className="lbl">{t('Applied products')}</span>
       <div className="applied-items">
         {[...seen.values()].map((v, i) => (
           <button key={i} className="applied-item" onClick={() => v.id && showProduct(v.id)} title={v.label.join(', ')}>
@@ -239,10 +245,10 @@ function AppliedBar() {
       <div className="applied-actions">
         {area > 0 && <span className="area">Selected: {area.toFixed(1)} m²</span>}
         <button className="btn" onClick={() => setModal('summary')}>
-          <Icon name="layers" /> Summary
+          <Icon name="layers" /> {t('Summary')}
         </button>
         <button className="btn primary" onClick={addCurrentToCatalog}>
-          <Icon name="book" /> Add to catalog
+          <Icon name="book" /> {t('Add to catalog')}
         </button>
       </div>
     </div>
@@ -257,6 +263,8 @@ export default function Visualizer({ onClose }: { onClose: () => void }) {
   const dark = useStore((s) => s.dark)
   const panorama = useStore((s) => s.panorama)
   const rootRef = useRef<HTMLDivElement>(null)
+  const t = useT()
+  const lang = useStore((s) => s.lang)
   const room = getRoom(roomId)
   const photo = photoRooms.find((r) => r.id === roomId)
 
@@ -272,13 +280,28 @@ export default function Visualizer({ onClose }: { onClose: () => void }) {
         {view === 'visualizer' && (
           <>
             <button className="btn ghost" onClick={backToRooms}>
-              <Icon name="back" /> Change room
+              <Icon name="back" /> {t('Change room')}
             </button>
+            <div className="head-actions">
+              <button className="btn sm" onClick={() => useStore.getState().setModal('inquiry')}>
+                <Icon name="info" size={15} /> {t('Get in touch')}
+              </button>
+              <button className="btn sm primary" onClick={addCurrentToCatalog}>
+                <Icon name="plus" size={15} /> {t('Add to Selection')}
+              </button>
+            </div>
             <span className="room-title">{roomName(roomId)}</span>
           </>
         )}
         <span className="grow" />
         {view === 'visualizer' && <Toolbar rootRef={rootRef} />}
+        <select className="lang-select" value={lang} onChange={(e) => useStore.getState().setLang(e.target.value as Lang)} aria-label={t('Language')} title={t('Language')}>
+          {LANGUAGES.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.label}
+            </option>
+          ))}
+        </select>
         <button className="x" onClick={onClose} aria-label="Exit visualiser" title="Exit">
           <Icon name="close" />
         </button>

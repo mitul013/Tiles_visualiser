@@ -26,8 +26,11 @@ function box(w: number, d: number, h: number, walls: ('back' | 'left' | 'right' 
   if (walls.includes('left')) s.push({ id: 'wall-left', label: 'Left Wall', type: 'wall', size: [d, h], position: [-w / 2, h / 2, 0], rotation: [0, PI / 2, 0] })
   if (walls.includes('right')) s.push({ id: 'wall-right', label: 'Right Wall', type: 'wall', size: [d, h], position: [w / 2, h / 2, 0], rotation: [0, -PI / 2, 0] })
   if (walls.includes('front')) s.push({ id: 'wall-front', label: 'Front Wall', type: 'wall', size: [w, h], position: [0, h / 2, d / 2], rotation: [0, PI, 0] })
+  if (walls.length === 4) s.push({ id: 'ceiling', label: 'Ceiling', type: 'ceiling', size: [w, d], position: [0, h, 0], rotation: [PI / 2, 0, 0] })
   return s
 }
+
+const rug = (z: number, x = 0): Surface3D => ({ id: 'rug', label: 'Rug', type: 'rug', size: [2.3, 1.6], position: [x, 0.012, z], rotation: [-PI / 2, 0, 0] })
 
 const tile = (productId: string, s: Partial<typeof DEFAULT_SETTINGS> = {}): Application => ({
   kind: 'tile',
@@ -47,8 +50,8 @@ export const ROOMS: Room[] = [
     name: 'Modern Living Room',
     category: 'Living Room',
     dims: { w: 6, d: 5.2, h: 2.9 },
-    surfaces: box(6, 5.2, 2.9),
-    defaults: { floor: tile('p1-1', { finish: 'glossy' }), ...walls(paint('c2')) },
+    surfaces: [...box(6, 5.2, 2.9), rug(-1.05)],
+    defaults: { floor: tile('p1-1', { finish: 'glossy' }), ...walls(paint('c2')), ceiling: paint('c1'), rug: tile('p68-1', { groutMm: 0 }) },
     camera: cam(5.2),
   },
   {
@@ -56,8 +59,8 @@ export const ROOMS: Room[] = [
     name: 'Calm Bedroom',
     category: 'Bedroom',
     dims: { w: 5, d: 4.6, h: 2.8 },
-    surfaces: box(5, 4.6, 2.8),
-    defaults: { floor: tile('p11-1', { layout: 'brick', groutMm: 1, groutColor: '#6c6a66' }), ...walls(paint('c3')) },
+    surfaces: [...box(5, 4.6, 2.8), rug(-4.6 / 2 + 1.7)],
+    defaults: { floor: tile('p11-1', { layout: 'brick', groutMm: 1, groutColor: '#6c6a66' }), ...walls(paint('c3')), ceiling: paint('c1'), rug: tile('p67-1', { groutMm: 0 }) },
     camera: cam(4.6),
   },
   {
@@ -74,6 +77,7 @@ export const ROOMS: Room[] = [
     defaults: {
       floor: tile('p22-1'),
       ...walls(paint('c1')),
+      ceiling: paint('c1'),
       backsplash: tile('p37-1', { layout: 'brick', groutMm: 2, groutColor: '#d8d4cc', finish: 'glossy' }),
       counter: tile('p1-1', { groutMm: 0, finish: 'glossy' }),
       island: tile('p1-1', { groutMm: 0, finish: 'glossy' }),
@@ -96,6 +100,7 @@ export const ROOMS: Room[] = [
       'wall-right': tile('p3-1', { finish: 'glossy', groutMm: 1.5 }),
       'wall-front': tile('p3-1', { finish: 'glossy', groutMm: 1.5 }),
       vanity: tile('p4-2', { groutMm: 0, finish: 'glossy' }),
+      ceiling: paint('c1'),
     },
     camera: { position: [0.6, 1.6, 1.4], target: [-0.3, 1.1, -1.7] },
   },
@@ -114,8 +119,8 @@ export const ROOMS: Room[] = [
     name: 'Hotel Lobby',
     category: 'Commercial',
     dims: { w: 9, d: 8, h: 3.6 },
-    surfaces: box(9, 8, 3.6),
-    defaults: { floor: tile('p2-2', { finish: 'glossy', groutMm: 1 }), ...walls(paint('c5')), 'wall-back': tile('p26-1', { finish: 'glossy' }) },
+    surfaces: [...box(9, 8, 3.6), { ...rug(1.6), size: [4.2, 2.6] }],
+    defaults: { floor: tile('p2-2', { finish: 'glossy', groutMm: 1 }), ...walls(paint('c5')), 'wall-back': tile('p26-1', { finish: 'glossy' }), ceiling: paint('c1'), rug: tile('p65-2', { groutMm: 0 }) },
     camera: { position: [0, 1.75, 3.6], target: [0, 0.9, -4] },
   },
 ]

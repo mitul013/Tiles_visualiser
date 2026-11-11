@@ -5,9 +5,13 @@ import { findPaint, findProduct, surfacesForRoom, useAllProducts, useStore } fro
 import type { Application, ColorFamily, Finish, Material, Product, SurfaceType } from '../types'
 import { DEFAULT_SETTINGS } from '../lib/layout'
 import { Icon, Swatch, toast } from './ui'
+import { useT } from '../lib/i18n'
 
 type Tab = 'tiles' | 'paint' | 'upload' | 'applied'
 type Sort = 'new' | 'old' | 'az' | 'za' | 'size'
+
+/** Wallpaper, panels and rugs are continuous products: no grout joints. */
+const seamless = (p?: Product) => !!p && ['Wallpaper', 'Panel', 'Rug'].includes(p.material)
 
 /** Apply a product to all selected surfaces, keeping each surface's previous layout settings. */
 export function applyProduct(p: Product) {
@@ -25,13 +29,18 @@ export function applyProduct(p: Product) {
   s.apply(targets, (prev) => ({
     kind: 'tile',
     productId: p.id,
-    settings: prev?.kind === 'tile' ? { ...prev.settings, finish: p.finish } : { ...DEFAULT_SETTINGS, finish: p.finish, layout: p.material === 'Wood' || p.material === 'Subway' ? 'brick' : 'grid', groutMm: p.material === 'Wood' ? 1 : 2 },
+    settings: seamless(p)
+      ? { ...DEFAULT_SETTINGS, finish: p.finish, layout: 'grid', groutMm: 0 }
+      : prev?.kind === 'tile' && !seamless(findProduct(prev.productId))
+        ? { ...prev.settings, finish: p.finish }
+        : { ...DEFAULT_SETTINGS, finish: p.finish, layout: p.material === 'Wood' || p.material === 'Subway' ? 'brick' : 'grid', groutMm: p.material === 'Wood' ? 1 : 2 },
   }))
   s.pushHistory(p.id)
   if (skipped) toast(`Applied to ${targets.length} surface(s); ${skipped} not suitable`)
 }
 
 export default function ProductPanel() {
+  const t = useT()
   const all = useAllProducts()
   const selected = useStore((s) => s.selected)
   const roomId = useStore((s) => s.roomId)
@@ -52,6 +61,7 @@ export default function ProductPanel() {
   const [onlySuitable, setOnlySuitable] = useState(true)
   const [sort, setSort] = useState<Sort>('new')
   const [paintFamily, setPaintFamily] = useState<ColorFamily | ''>('')
+  const [view, setView] = useState<'grid' | 'list'>('grid')
 
   const surfaces = surfacesForRoom(roomId, photoRooms)
   const selTypes = new Set<SurfaceType>(selected.map((id) => surfaces.find((s) => s.id === id)?.type).filter(Boolean) as SurfaceType[])
@@ -98,9 +108,16 @@ export default function ProductPanel() {
       >
         <Icon name="info" size={15} />
       </button>
-      <div className="pname">{p.name}</div>
-      <div className="pmeta">
-        {sizeLabel(p.size)} · {p.finish === 'glossy' ? 'Glossy' : 'Matt'}
+      <div className="pinfo">
+        <div className="pname">{p.name}</div>
+        <div className="pmeta">
+          {sizeLabel(p.size)} · {p.finish === 'glossy' ? 'Glossy' : 'Matt'}
+        </div>
+        {view === 'list' && (
+          <div className="pmeta">
+            {p.material} · ${p.price}/m² · {p.sku}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -117,7 +134,7 @@ export default function ProductPanel() {
           ] as [Tab, string][]
         ).map(([id, l]) => (
           <button key={id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
-            {l}
+            {t(l)}
           </button>
         ))}
       </div>
@@ -127,7 +144,15 @@ export default function ProductPanel() {
           <div className="search-row">
             <div className="search">
               <Icon name="search" size={16} />
-              <input placeholder="Search name, SKU, material…" value={q} onChange={(e) => setQ(e.target.value)} />
+              <input placeholder={t('Search name, SKU, material…')} value={q} onChange={(e) => setQ(e.target.value)} />
+            </div>
+            <div className="view-toggle">
+              <button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')} title="List view" aria-label="List view">
+                <Icon name="filter" size={15} />
+              </button>
+              <button className={view === 'grid' ? 'on' : ''} onClick={() => setView('grid')} title="Grid view" aria-label="Grid view">
+                <Icon name="grid" size={15} />
+              </button>
             </div>
             <button className={`filter-btn${showFilters ? ' on' : ''}`} onClick={() => setShowFilters(!showFilters)} title="Filters">
               <Icon name="filter" size={16} />
@@ -196,7 +221,9 @@ export default function ProductPanel() {
             </div>
           )}
           <div className="list-head">
-            <span>{list.length} products</span>
+            <span>
+              {list.length} {t('products')}
+            </span>
             <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
               <option value="new">New products first</option>
               <option value="old">Old products first</option>
@@ -221,7 +248,20 @@ export default function ProductPanel() {
               </div>
             </div>
           )}
-          <div className="pgrid">
+          {selTypes.has('rug') && (
+            <button
+              className="btn sm no-rug"
+              onClick={() => {
+                const st = useStore.getState()
+                const next = { ...st.applied }
+                for (const id of st.selected) if (surfaces.find((x) => x.id === id)?.type === 'rug') delete next[id]
+                st.setApplied(next)
+              }}
+            >
+              <Icon name="close" size={14} /> {t('No rug')}
+            </button>
+          )}
+          <div className={view === 'list' ? 'plist' : 'pgrid'}>
             {list.map((p) => (
               <ProductCard key={p.id} p={p} />
             ))}
@@ -251,8 +291,8 @@ export default function ProductPanel() {
                   key={p.id}
                   className={`paint${on ? ' on' : ''}`}
                   onClick={() => {
-                    const targets = selected.filter((id) => surfaces.find((s) => s.id === id)?.type === 'wall')
-                    if (!targets.length) return toast('Paint can be applied to walls — select a wall')
+                    const targets = selected.filter((id) => ['wall', 'ceiling'].includes(surfaces.find((s) => s.id === id)?.type ?? ''))
+                    if (!targets.length) return toast('Paint can be applied to walls and ceilings — select one')
                     apply(targets, { kind: 'paint', paintId: p.id, finish: 'matt' })
                   }}
                 >

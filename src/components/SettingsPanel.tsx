@@ -3,9 +3,11 @@ import { findProduct, useStore } from '../store'
 import { GROUT_COLORS, LAYOUTS } from '../lib/layout'
 import type { Application, SurfaceSettings } from '../types'
 import { Icon } from './ui'
+import { useT } from '../lib/i18n'
 
 /** Layout / rotation / grout / finish controls for the selected tiled surfaces. */
 export default function SettingsPanel() {
+  const t = useT()
   const selected = useStore((s) => s.selected)
   const applied = useStore((s) => s.applied)
   const apply = useStore((s) => s.apply)
@@ -25,12 +27,18 @@ export default function SettingsPanel() {
   return (
     <div className={`settings-panel${open ? '' : ' closed'}`}>
       <button className="sp-head" onClick={() => setOpen(!open)}>
-        <Icon name="settings" size={16} /> Settings{product ? ` · ${product.name}` : ''}
+        <Icon name="settings" size={16} /> {t('Settings')}{product ? ` · ${product.name}` : ''}
         <span className="chev">{open ? '–' : '+'}</span>
       </button>
-      {open && st && (
+      {open && st && product && ['Wallpaper', 'Panel', 'Rug'].includes(product.material) && (
         <div className="sp-body">
-          <label>Layout</label>
+          <label>{t('Surface finish')}</label>
+          <p className="hint">{product.material === 'Rug' ? `${product.size[0]}×${product.size[1]} cm rug, placed at real size.` : 'Seamless product: no grout joints.'}</p>
+        </div>
+      )}
+      {open && st && !(product && ['Wallpaper', 'Panel', 'Rug'].includes(product.material)) && (
+        <div className="sp-body">
+          <label>{t('Layout')}</label>
           <div className="layout-grid">
             {LAYOUTS.map((l) => (
               <button key={l.id} className={st.layout === l.id ? 'on' : ''} onClick={() => update({ layout: l.id })} title={l.hint}>
@@ -39,7 +47,7 @@ export default function SettingsPanel() {
               </button>
             ))}
           </div>
-          <label>Rotation</label>
+          <label>{t('Rotation')}</label>
           <div className="seg">
             {([0, 45, 90] as const).map((r) => (
               <button key={r} className={st.rotation === r ? 'on' : ''} onClick={() => update({ rotation: r })}>
@@ -48,10 +56,10 @@ export default function SettingsPanel() {
             ))}
           </div>
           <label>
-            Grout size <b>{st.groutMm} mm</b>
+            {t('Grout size')} <b>{st.groutMm} mm</b>
           </label>
           <input type="range" min={0} max={12} step={0.5} value={st.groutMm} onChange={(e) => update({ groutMm: Number(e.target.value) })} />
-          <label>Grout colour</label>
+          <label>{t('Grout colour')}</label>
           <div className="grout-colors">
             {GROUT_COLORS.map((c) => (
               <button key={c} className={st.groutColor === c ? 'on' : ''} style={{ background: c }} onClick={() => update({ groutColor: c })} aria-label={`Grout ${c}`} />
@@ -61,11 +69,11 @@ export default function SettingsPanel() {
               <Icon name="plus" size={14} />
             </label>
           </div>
-          <label>Surface finish</label>
+          <label>{t('Surface finish')}</label>
           <div className="seg">
             {(['glossy', 'matt'] as const).map((f) => (
               <button key={f} className={st.finish === f ? 'on' : ''} onClick={() => update({ finish: f })}>
-                {f === 'glossy' ? 'Glossy' : 'Matt'}
+                {f === 'glossy' ? t('Glossy') : t('Matt')}
               </button>
             ))}
           </div>

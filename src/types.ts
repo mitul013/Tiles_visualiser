@@ -1,4 +1,4 @@
-export type SurfaceType = 'floor' | 'wall' | 'countertop' | 'backsplash'
+export type SurfaceType = 'floor' | 'wall' | 'countertop' | 'backsplash' | 'ceiling' | 'rug'
 
 export type Material =
   | 'Marble'
@@ -11,6 +11,9 @@ export type Material =
   | 'Pattern'
   | 'Hexagon'
   | 'Subway'
+  | 'Wallpaper'
+  | 'Panel'
+  | 'Rug'
   | 'Custom'
 
 export type Finish = 'glossy' | 'matt'
@@ -38,12 +41,15 @@ export interface TileArt {
     | 'mosaic'
     | 'pattern'
     | 'hexagon'
+    | 'wallpaper'
+    | 'panel'
+    | 'rug'
     | 'image'
   base: string
   accent: string
   accent2?: string
   /** For pattern tiles: which motif to draw */
-  motif?: 'star' | 'flower' | 'diamond' | 'arc' | 'cross'
+  motif?: 'star' | 'flower' | 'diamond' | 'arc' | 'cross' | 'damask' | 'stripe' | 'botanical' | 'lattice' | 'linen' | 'medallion' | 'kilim' | 'shag' | 'border'
   /** For uploaded tiles */
   imageUrl?: string
 }

@@ -897,9 +897,101 @@ export function UploadTileModal() {
   )
 }
 
+export function InquiryModal() {
+  const close = () => useStore.getState().setModal(null)
+  const roomId = useStore((s) => s.roomId)
+  const applied = useStore((s) => s.applied)
+  const [sent, setSent] = useState(false)
+  const lines = designLines({ roomId, applied })
+  return (
+    <Modal title="We would love to hear from you!" onClose={close}>
+      {sent ? (
+        <div className="empty big">
+          <Icon name="check" size={40} />
+          <p>Thank you! Your email app has opened with the inquiry.</p>
+          <button className="btn primary" onClick={close}>
+            Back to visualiser
+          </button>
+        </div>
+      ) : (
+        <form
+          className="form"
+          onSubmit={(e) => {
+            e.preventDefault()
+            const f = new FormData(e.currentTarget)
+            const body = [`Name: ${f.get('name')}`, `Phone / WhatsApp: ${f.get('phone')}`, `Email: ${f.get('email')}`, '', `${f.get('msg')}`, '', `Design: ${shareUrl({ roomId, applied })}`, ...lines.map((l) => `${l.surface.label}: ${'product' in l ? `${l.product.name} (${l.product.sku})` : `Paint ${l.paint.name}`}`)].join('\n')
+            location.href = `mailto:?subject=${encodeURIComponent('Inquiry from the visualiser')}&body=${encodeURIComponent(body)}`
+            setSent(true)
+          }}
+        >
+          <label>
+            Full name<input name="name" required />
+          </label>
+          <label>
+            Phone / WhatsApp<input name="phone" inputMode="tel" />
+          </label>
+          <label>
+            Email<input name="email" type="email" />
+          </label>
+          <label>
+            Message<textarea name="msg" rows={3} defaultValue="I'm interested in the products in this design." />
+          </label>
+          <p className="hint">Your current design link and applied products are attached automatically.</p>
+          <button className="btn primary">Send inquiry</button>
+        </form>
+      )}
+    </Modal>
+  )
+}
+
+export function RateModal() {
+  const close = () => useStore.getState().setModal(null)
+  const [stars, setStars] = useState(0)
+  const [text, setText] = useState('')
+  const [done, setDone] = useState(false)
+  return (
+    <Modal title="Rate your experience" onClose={close}>
+      {done ? (
+        <div className="empty big">
+          <Icon name="heart" size={40} />
+          <p>Thanks for your feedback.</p>
+        </div>
+      ) : (
+        <div className="form">
+          <div className="stars" role="radiogroup" aria-label="Rating">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button key={n} className={n <= stars ? 'on' : ''} onClick={() => setStars(n)} aria-label={`${n} star${n > 1 ? 's' : ''}`}>
+                ★
+              </button>
+            ))}
+          </div>
+          <label>
+            How can we improve your experience?
+            <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder="Write your review here..." />
+          </label>
+          <button
+            className="btn primary"
+            disabled={!stars}
+            onClick={() => {
+              useStore.getState().addFeedback({ stars, text, at: Date.now() })
+              setDone(true)
+            }}
+          >
+            Submit
+          </button>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
 export function ModalHost() {
   const modal = useStore((s) => s.modal)
   switch (modal) {
+    case 'inquiry':
+      return <InquiryModal />
+    case 'rate':
+      return <RateModal />
     case 'catalog':
       return <CatalogModal />
     case 'cart':

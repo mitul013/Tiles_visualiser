@@ -21,8 +21,10 @@ const PRESET: Record<SurfaceType, { label: string; quad: [number, number][]; siz
   wall: { label: 'Wall', quad: [[0.22, 0.06], [0.78, 0.06], [0.78, 0.6], [0.22, 0.6]], size: [4, 2.7] },
   backsplash: { label: 'Backsplash', quad: [[0.3, 0.35], [0.7, 0.35], [0.7, 0.5], [0.3, 0.5]], size: [3, 0.6] },
   countertop: { label: 'Counter Top', quad: [[0.3, 0.52], [0.7, 0.52], [0.74, 0.58], [0.26, 0.58]], size: [3, 0.6] },
+  ceiling: { label: 'Ceiling', quad: [[0, 0], [1, 0], [0.78, 0.08], [0.22, 0.08]], size: [4, 4] },
+  rug: { label: 'Rug', quad: [[0.3, 0.75], [0.7, 0.75], [0.8, 0.92], [0.2, 0.92]], size: [2.3, 1.6] },
 }
-const COLORS: Record<SurfaceType, string> = { floor: '#ff8a3d', wall: '#1e88ff', backsplash: '#2bb673', countertop: '#c04cf0' }
+const COLORS: Record<SurfaceType, string> = { floor: '#ff8a3d', wall: '#1e88ff', backsplash: '#2bb673', countertop: '#c04cf0', ceiling: '#00b5c8', rug: '#e0b000' }
 
 /** Wizard: upload a room photo, mark surfaces by dragging 4 corners each, and give their real size. */
 export default function UploadRoomModal() {

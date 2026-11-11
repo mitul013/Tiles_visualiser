@@ -13,6 +13,9 @@ interface Seed {
 }
 
 const FW: SurfaceType[] = ['floor', 'wall']
+const FWC: SurfaceType[] = ['floor', 'wall', 'ceiling']
+const WC: SurfaceType[] = ['wall', 'ceiling']
+const RUG: SurfaceType[] = ['rug']
 const ALL: SurfaceType[] = ['floor', 'wall', 'countertop', 'backsplash']
 const WALLS: SurfaceType[] = ['wall', 'backsplash']
 
@@ -30,11 +33,11 @@ const seeds: Seed[] = [
   { name: 'Onyx Honey', material: 'Marble', color: 'Beige', finish: 'glossy', sizes: [[60, 120]], application: ALL, price: 88, art: { kind: 'marble', base: '#e3b26b', accent: '#fff3d6', accent2: '#9c6a2b' } },
 
   // Wood
-  { name: 'Nordic Oak', material: 'Wood', color: 'Beige', finish: 'matt', sizes: [[20, 120], [15, 90]], application: FW, price: 29, art: { kind: 'wood', base: '#c9a77c', accent: '#8f6a43' }, isNew: true },
-  { name: 'Smoked Walnut', material: 'Wood', color: 'Brown', finish: 'matt', sizes: [[20, 120], [20, 160]], application: FW, price: 33, art: { kind: 'wood', base: '#6b4a33', accent: '#3b2618' } },
-  { name: 'Ash Grey Plank', material: 'Wood', color: 'Grey', finish: 'matt', sizes: [[20, 120], [15, 90]], application: FW, price: 27, art: { kind: 'wood', base: '#a9a49c', accent: '#6e6a63' } },
+  { name: 'Nordic Oak', material: 'Wood', color: 'Beige', finish: 'matt', sizes: [[20, 120], [15, 90]], application: FWC, price: 29, art: { kind: 'wood', base: '#c9a77c', accent: '#8f6a43' }, isNew: true },
+  { name: 'Smoked Walnut', material: 'Wood', color: 'Brown', finish: 'matt', sizes: [[20, 120], [20, 160]], application: FWC, price: 33, art: { kind: 'wood', base: '#6b4a33', accent: '#3b2618' } },
+  { name: 'Ash Grey Plank', material: 'Wood', color: 'Grey', finish: 'matt', sizes: [[20, 120], [15, 90]], application: FWC, price: 27, art: { kind: 'wood', base: '#a9a49c', accent: '#6e6a63' } },
   { name: 'Honey Teak', material: 'Wood', color: 'Brown', finish: 'matt', sizes: [[20, 120]], application: FW, price: 31, art: { kind: 'wood', base: '#b77d43', accent: '#7a4b1f' } },
-  { name: 'Whitewash Pine', material: 'Wood', color: 'White', finish: 'matt', sizes: [[20, 120], [15, 90]], application: FW, price: 26, art: { kind: 'wood', base: '#e2d8c8', accent: '#b4a68f' } },
+  { name: 'Whitewash Pine', material: 'Wood', color: 'White', finish: 'matt', sizes: [[20, 120], [15, 90]], application: FWC, price: 26, art: { kind: 'wood', base: '#e2d8c8', accent: '#b4a68f' } },
   { name: 'Ebony Strip', material: 'Wood', color: 'Black', finish: 'matt', sizes: [[15, 90]], application: FW, price: 35, art: { kind: 'wood', base: '#3a302b', accent: '#1a1411' } },
 
   // Stone
@@ -90,6 +93,27 @@ const seeds: Seed[] = [
   { name: 'Palm Arc', material: 'Pattern', color: 'Green', finish: 'matt', sizes: [[20, 20]], application: ALL, price: 36, art: { kind: 'pattern', base: '#efe8da', accent: '#4c7a5d', accent2: '#d79b7a', motif: 'arc' } },
   { name: 'Sienna Cross', material: 'Pattern', color: 'Brown', finish: 'matt', sizes: [[20, 20]], application: ALL, price: 34, art: { kind: 'pattern', base: '#f0e2cc', accent: '#9a4f2c', accent2: '#3b3a36', motif: 'cross' } },
   { name: 'Rose Quarter', material: 'Pattern', color: 'Pink', finish: 'matt', sizes: [[20, 20]], application: ALL, price: 36, art: { kind: 'pattern', base: '#f6ece8', accent: '#c9786a', accent2: '#58706a', motif: 'arc' } },
+
+  // Wallpaper (one pattern repeat per "tile", seamless, no grout)
+  { name: 'Ivory Damask', material: 'Wallpaper', color: 'Beige', finish: 'matt', sizes: [[53, 53]], application: ['wall'], price: 14, art: { kind: 'wallpaper', base: '#efe6d4', accent: '#d8c7a3', motif: 'damask' }, isNew: true },
+  { name: 'Regency Stripe', material: 'Wallpaper', color: 'Green', finish: 'matt', sizes: [[53, 53]], application: ['wall'], price: 12, art: { kind: 'wallpaper', base: '#e9eee6', accent: '#5f7d66', accent2: '#c8d5c6', motif: 'stripe' } },
+  { name: 'Botanical Leaves', material: 'Wallpaper', color: 'Green', finish: 'matt', sizes: [[53, 53]], application: ['wall'], price: 16, art: { kind: 'wallpaper', base: '#f1efe7', accent: '#3f6b4c', accent2: '#8fae8a', motif: 'botanical' }, isNew: true },
+  { name: 'Navy Lattice', material: 'Wallpaper', color: 'Blue', finish: 'matt', sizes: [[53, 53]], application: ['wall'], price: 15, art: { kind: 'wallpaper', base: '#22324a', accent: '#c9a24a', motif: 'lattice' } },
+  { name: 'Grey Linen', material: 'Wallpaper', color: 'Grey', finish: 'matt', sizes: [[53, 53]], application: ['wall'], price: 11, art: { kind: 'wallpaper', base: '#b9b6ae', accent: '#9c9990', motif: 'linen' } },
+  { name: 'Blush Damask', material: 'Wallpaper', color: 'Pink', finish: 'matt', sizes: [[53, 53]], application: ['wall'], price: 14, art: { kind: 'wallpaper', base: '#ecd3cc', accent: '#c99590', motif: 'damask' } },
+
+  // Wall & ceiling panels (slatted)
+  { name: 'Oak Slat Panel', material: 'Panel', color: 'Beige', finish: 'matt', sizes: [[60, 240]], application: WC, price: 48, art: { kind: 'panel', base: '#c39b6b', accent: '#2a2420' }, isNew: true },
+  { name: 'Walnut Slat Panel', material: 'Panel', color: 'Brown', finish: 'matt', sizes: [[60, 240]], application: WC, price: 54, art: { kind: 'panel', base: '#6b4a33', accent: '#1b1612' } },
+  { name: 'Black Acoustic Panel', material: 'Panel', color: 'Black', finish: 'matt', sizes: [[60, 240]], application: WC, price: 52, art: { kind: 'panel', base: '#2e2b29', accent: '#111' } },
+  { name: 'White Fluted Panel', material: 'Panel', color: 'White', finish: 'matt', sizes: [[60, 240]], application: WC, price: 39, art: { kind: 'panel', base: '#efede8', accent: '#cfcac0' } },
+
+  // Rugs (one rug = one "tile" at its real size)
+  { name: 'Heritage Medallion Rug', material: 'Rug', color: 'Multi', finish: 'matt', sizes: [[160, 230], [200, 300]], application: RUG, price: 95, art: { kind: 'rug', base: '#8c2f2b', accent: '#e9d8b8', accent2: '#1f3049', motif: 'medallion' }, isNew: true },
+  { name: 'Nomad Kilim Rug', material: 'Rug', color: 'Brown', finish: 'matt', sizes: [[160, 230], [200, 300]], application: RUG, price: 80, art: { kind: 'rug', base: '#c7643f', accent: '#efe3cc', accent2: '#2f4a5b', motif: 'kilim' } },
+  { name: 'Cloud Shag Rug', material: 'Rug', color: 'White', finish: 'matt', sizes: [[160, 230], [200, 300]], application: RUG, price: 70, art: { kind: 'rug', base: '#ece8e1', accent: '#d6d0c6', motif: 'shag' } },
+  { name: 'Coastal Stripe Rug', material: 'Rug', color: 'Blue', finish: 'matt', sizes: [[160, 230], [200, 300]], application: RUG, price: 65, art: { kind: 'rug', base: '#e9e4d8', accent: '#2f5f7a', accent2: '#9ab7c7', motif: 'stripe' } },
+  { name: 'Graphite Border Rug', material: 'Rug', color: 'Grey', finish: 'matt', sizes: [[160, 230], [200, 300]], application: RUG, price: 60, art: { kind: 'rug', base: '#8a8d90', accent: '#3b3e42', motif: 'border' } },
 ]
 
 const descFor = (s: Seed) => {
@@ -104,6 +128,9 @@ const descFor = (s: Seed) => {
     Pattern: 'Encaustic-look patterned tile. Mix rotations for endless layouts.',
     Hexagon: 'Hexagonal tile for geometric floors and walls.',
     Subway: 'Bevelled-edge subway tile with a handmade feel.',
+    Wallpaper: 'Non-woven wallpaper, seamless pattern repeat. Wipeable and easy to hang.',
+    Panel: 'Slatted decorative panel for feature walls and ceilings, with acoustic felt backing.',
+    Rug: 'Hand-finished area rug, dense low pile.',
     Custom: 'Your uploaded product.',
   }
   return `${m[s.material]} ${s.finish === 'glossy' ? 'Polished glossy' : 'Soft matt'} finish.`
@@ -132,7 +159,7 @@ export const PRODUCTS: Product[] = seeds.flatMap((s, i) =>
   }),
 )
 
-export const MATERIALS: Material[] = ['Marble', 'Wood', 'Stone', 'Concrete', 'Terrazzo', 'Ceramic', 'Subway', 'Mosaic', 'Hexagon', 'Pattern']
+export const MATERIALS: Material[] = ['Marble', 'Wood', 'Stone', 'Concrete', 'Terrazzo', 'Ceramic', 'Subway', 'Mosaic', 'Hexagon', 'Pattern', 'Wallpaper', 'Panel', 'Rug']
 export const COLORS: { name: ColorFamily; hex: string }[] = [
   { name: 'White', hex: '#f4f4f2' },
   { name: 'Beige', hex: '#dccaa6' },

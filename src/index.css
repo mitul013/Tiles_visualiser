@@ -1824,3 +1824,78 @@ input[type='range'] {
   min-height: 90px;
   font-size: 12px;
 }
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.view-toggle button {
+  border: 0;
+  background: var(--panel);
+  width: 34px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.view-toggle button.on {
+  background: var(--brand);
+  color: #fff;
+}
+.plist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 14px 16px;
+}
+.plist .pcard {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.plist .pcard .swatch {
+  width: 64px;
+  flex: none;
+}
+.plist .pcard .tag-new {
+  top: 8px;
+  left: 8px;
+}
+.plist .pcard .info {
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 1;
+}
+.plist .pinfo {
+  min-width: 0;
+  padding-right: 30px;
+}
+.no-rug {
+  margin: 0 14px 6px;
+}
+.stars {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+.stars button {
+  border: 0;
+  background: none;
+  font-size: 34px;
+  color: #d5d2cb;
+  line-height: 1;
+}
+.stars button.on {
+  color: var(--gold);
+}
+.head-actions {
+  display: flex;
+  gap: 6px;
+}
+.lang-select {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 6px;
+  background: var(--panel);
+  font-size: 13px;
+}

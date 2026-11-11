@@ -14,13 +14,15 @@ The feature set was mapped from the public tilesview.ai visualiser with the
 
 - **Landing page** with a *Try Our Visualizer* button that opens the visualiser in a full-screen pop-up
 - **Room selection**: 6 demo 3D rooms (living, bedroom, kitchen, bathroom, patio, lobby) with category filter
+- **Photo rooms use the reference's layered model**: original → tiles → matt/glossy light map (multiply) → highlights
+  (screen) → cut-out on top. Every layer can be uploaded (prepared cut-out + light maps) or is generated.
 - **Upload your own room**: mark each surface by dragging 4 corners, then roughly paint the **objects in
   front** (sofa, plants, taps): the outline is detected automatically and those objects stay on top,
   untouched. Tiles are perspective-mapped with the photo's own light and shadows and soft edges
 - **360° panorama** inside any demo room. Orbit and zoom in normal mode
-- **Surfaces**: Floor / Walls / Wall + Floor / Counter Top / Backsplash, or click any surface in the room (Shift-click to multi-select)
-- **Left panel**: Tiles (72 SKUs, procedurally drawn: marble, wood, stone, concrete, terrazzo, ceramic,
-  subway, mosaic, hexagon, encaustic patterns), Paint shades, My Upload (your own tile image), Applied list
+- **Surfaces**: Floor / Walls / Ceiling / Rug / Wall + Floor / Counter Top / Backsplash, or click any surface in the room (Shift-click to multi-select)
+- **Left panel** (grid or list view): wallpapers, slat wall/ceiling panels and rugs (swap or remove the rug), plus tiles (procedurally drawn: procedurally drawn: marble, wood, stone, concrete, terrazzo, ceramic,
+  subway, mosaic, hexagon, encaustic patterns), Paint shades (walls and ceilings), My Upload (your own tile image), Applied list
 - **Filters & sort**: search, material, colour, size, finish, "only suitable for selected surface"
 - **Settings**: 11 layouts (Grid, Brick, 1/3 Offset, Random plank, Vertical Stack, Checkered, Herringbone,
   Quarter Turn, Diagonal, Bookmatch, Endmatch), rotation 0/45/90°, grout size and colour, glossy (real reflections) / matt
@@ -30,6 +32,7 @@ The feature set was mapped from the public tilesview.ai visualiser with the
 - **Catalogs**: add designs, then download one or all as a PDF (render, QR link, products, quantities, price)
 - **Share**: link (the design is encoded in the URL), QR code, WhatsApp / Facebook / Email
 - **Compare**: before/after slider between the original room, the current design, saved designs and catalog entries
+- **Header**: Get in touch (inquiry with the design attached), Add to Selection, language selector (EN/ES/FR/DE/HI), Rate your experience
 - **Save / My saved designs**, **Random design**, **Undo / Redo / Reset**, **Download HD image**, **Full screen**, **Dark theme**
 - **Product details** with size variants, specifications, details PDF
 - **Calculator & cart**: area from surfaces or dimensions (m / ft), waste %, grout, giving pieces, boxes, weight and cost, plus an inquiry form

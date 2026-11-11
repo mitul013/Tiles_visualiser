@@ -70,6 +70,16 @@ function useSurfaceTexture(surface: Surface3D, app: Application | undefined) {
 
 const COUNTER_THICKNESS = 0.04
 
+/** Rugs are placed at the product's real size (long side across the room); no rug applied = nothing drawn. */
+function RugMesh(props: { surface: Surface3D; app?: Application; selected: boolean; outdoor?: boolean; onPick: (id: string, additive: boolean) => void; onHover: (label: string | null) => void }) {
+  const app = props.app
+  const p = app?.kind === 'tile' ? findProduct(app.productId) : undefined
+  if (!p || !app || app.kind !== 'tile') return null
+  const [a, b] = [p.size[0] / 100, p.size[1] / 100]
+  const surface: Surface3D = { ...props.surface, size: [a, b], rotation: a < b ? [-Math.PI / 2, 0, Math.PI / 2] : props.surface.rotation }
+  return <SurfaceMesh {...props} surface={surface} app={{ ...app, settings: { ...app.settings, layout: 'grid', groutMm: 0, rotation: 0 } }} />
+}
+
 function SurfaceMesh({ surface, app, selected, outdoor, onPick, onHover }: { surface: Surface3D; app?: Application; selected: boolean; outdoor?: boolean; onPick: (id: string, additive: boolean) => void; onHover: (label: string | null) => void }) {
   const tex = useSurfaceTexture(surface, app)
   const finish = app?.kind === 'tile' ? app.settings.finish : app?.finish ?? 'matt'
@@ -334,14 +344,9 @@ export default function Scene3D({ room }: { room: Room }) {
         />
         <pointLight position={[0, h - 0.3, 0]} intensity={room.outdoor ? 0 : 3} distance={Math.max(w, d) * 1.4} decay={1.4} color={t.color} />
         {room.surfaces.map((s) => (
+          s.type === 'rug' ? <RugMesh key={s.id} surface={s} app={applied[s.id]} selected={selected.includes(s.id)} outdoor={room.outdoor} onPick={onPick} onHover={setHover} /> :
           <SurfaceMesh key={s.id} surface={s} app={applied[s.id]} selected={selected.includes(s.id)} outdoor={room.outdoor} onPick={onPick} onHover={setHover} />
         ))}
-        {!room.outdoor && (
-          <mesh position={[0, h, 0]} rotation={[Math.PI / 2, 0, 0]}>
-            <planeGeometry args={[w, d]} />
-            <meshStandardMaterial color="#f7f6f3" roughness={1} />
-          </mesh>
-        )}
         <ShadowGroup>
           <Furniture room={room} />
         </ShadowGroup>

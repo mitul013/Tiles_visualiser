@@ -39,7 +39,7 @@ const idbStorage: StateStorage = {
 }
 
 export type View = 'rooms' | 'visualizer'
-export type Modal = null | 'catalog' | 'cart' | 'calculator' | 'share' | 'compare' | 'saved' | 'uploadTile' | 'uploadRoom' | 'product' | 'summary' | 'save'
+export type Modal = null | 'inquiry' | 'rate' | 'catalog' | 'cart' | 'calculator' | 'share' | 'compare' | 'saved' | 'uploadTile' | 'uploadRoom' | 'product' | 'summary' | 'save'
 
 interface State {
   open: boolean
@@ -63,6 +63,10 @@ interface State {
   originalShot: string | null
   /** set by the active scene: returns a JPEG of the current view */
   capture: ((hd?: boolean) => string) | null
+  lang: import('./lib/i18n').Lang
+  feedback: { stars: number; text: string; at: number }[]
+  setLang: (l: import('./lib/i18n').Lang) => void
+  addFeedback: (f: { stars: number; text: string; at: number }) => void
 
   setOpen: (o: boolean) => void
   openRoom: (roomId: string, applied?: Record<string, Application>) => void
@@ -125,6 +129,10 @@ export const useStore = create<State>()(
       history: [],
       originalShot: null,
       capture: null,
+      lang: 'en',
+      feedback: [],
+      setLang: (lang) => setS({ lang }),
+      addFeedback: (f) => setS({ feedback: [f, ...getS().feedback].slice(0, 50) }),
 
       setOpen: (open) => setS({ open }),
       openRoom: (roomId, applied) => {
@@ -201,6 +209,8 @@ export const useStore = create<State>()(
         saved: s.saved,
         cart: s.cart,
         history: s.history,
+        lang: s.lang,
+        feedback: s.feedback,
       }),
     },
   ),

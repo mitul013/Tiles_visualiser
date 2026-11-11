@@ -396,6 +396,207 @@ function drawPattern(ctx: CanvasRenderingContext2D, w: number, h: number, a: Til
   noise(ctx, w, h, 12, r)
 }
 
+
+function drawWallpaper(ctx: CanvasRenderingContext2D, w: number, h: number, a: TileArt, r: () => number) {
+  ctx.fillStyle = a.base
+  ctx.fillRect(0, 0, w, h)
+  const c = Math.min(w, h)
+  ctx.save()
+  switch (a.motif) {
+    case 'stripe': {
+      const n = 6
+      for (let i = 0; i < n; i++) {
+        ctx.fillStyle = i % 2 ? (a.accent2 ?? a.base) : a.accent
+        ctx.fillRect((i * w) / n, 0, w / n / (i % 2 ? 1 : 2.4), h)
+      }
+      break
+    }
+    case 'botanical': {
+      for (let k = 0; k < 9; k++) {
+        const x = r() * w
+        const y = r() * h
+        const ang = r() * Math.PI * 2
+        const len = c * (0.18 + r() * 0.16)
+        ctx.save()
+        ctx.translate(x, y)
+        ctx.rotate(ang)
+        ctx.fillStyle = k % 3 ? a.accent : (a.accent2 ?? a.accent)
+        ctx.beginPath()
+        ctx.ellipse(0, 0, len, len * 0.32, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = a.base
+        ctx.lineWidth = Math.max(1, c / 160)
+        ctx.beginPath()
+        ctx.moveTo(-len, 0)
+        ctx.lineTo(len, 0)
+        ctx.stroke()
+        ctx.restore()
+      }
+      break
+    }
+    case 'lattice': {
+      ctx.strokeStyle = a.accent
+      ctx.lineWidth = c / 60
+      for (const [x, y] of [[0, 0], [w, 0], [0, h], [w, h], [w / 2, h / 2]]) {
+        ctx.beginPath()
+        ctx.ellipse(x, y, w * 0.28, h * 0.28, Math.PI / 4, 0, Math.PI * 2)
+        ctx.stroke()
+      }
+      break
+    }
+    case 'linen': {
+      for (let i = 0; i < w; i += 2) {
+        ctx.globalAlpha = 0.08 + r() * 0.12
+        ctx.fillStyle = a.accent
+        ctx.fillRect(i, 0, 1, h)
+      }
+      for (let j = 0; j < h; j += 2) {
+        ctx.globalAlpha = 0.06 + r() * 0.1
+        ctx.fillStyle = a.accent
+        ctx.fillRect(0, j, w, 1)
+      }
+      break
+    }
+    case 'damask':
+    default: {
+      // symmetric ornament: mirrored petals around a vertical axis, tiled half-drop
+      const motif = (cx: number, cy: number, s: number) => {
+        ctx.fillStyle = a.accent
+        for (const sx of [-1, 1]) {
+          ctx.beginPath()
+          ctx.moveTo(cx, cy - s)
+          ctx.bezierCurveTo(cx + sx * s * 0.9, cy - s * 0.6, cx + sx * s * 0.7, cy + s * 0.2, cx, cy + s)
+          ctx.bezierCurveTo(cx + sx * s * 0.25, cy + s * 0.2, cx + sx * s * 0.3, cy - s * 0.4, cx, cy - s)
+          ctx.fill()
+          ctx.beginPath()
+          ctx.ellipse(cx + sx * s * 0.55, cy - s * 0.15, s * 0.16, s * 0.3, sx * 0.6, 0, Math.PI * 2)
+          ctx.fill()
+        }
+        ctx.beginPath()
+        ctx.arc(cx, cy, s * 0.1, 0, Math.PI * 2)
+        ctx.fillStyle = a.base
+        ctx.fill()
+      }
+      for (const [x, y] of [[w / 2, h / 4], [0, (h * 3) / 4], [w, (h * 3) / 4]]) motif(x, y, c * 0.22)
+      break
+    }
+  }
+  ctx.restore()
+  ctx.globalAlpha = 1
+  noise(ctx, w, h, 5, r)
+}
+
+function drawPanel(ctx: CanvasRenderingContext2D, w: number, h: number, a: TileArt, r: () => number) {
+  // vertical slats on a dark felt backing
+  ctx.fillStyle = a.accent
+  ctx.fillRect(0, 0, w, h)
+  const slats = 6
+  const sw = w / slats
+  for (let i = 0; i < slats; i++) {
+    const x = i * sw + sw * 0.18
+    const g = ctx.createLinearGradient(x, 0, x + sw * 0.64, 0)
+    g.addColorStop(0, shade(a.base, -18))
+    g.addColorStop(0.5, shade(a.base, 10 + (r() - 0.5) * 10))
+    g.addColorStop(1, shade(a.base, -18))
+    ctx.fillStyle = g
+    ctx.fillRect(x, 0, sw * 0.64, h)
+    ctx.strokeStyle = shade(a.base, -30)
+    ctx.globalAlpha = 0.25
+    for (let k = 0; k < 6; k++) {
+      const gx = x + r() * sw * 0.64
+      ctx.beginPath()
+      ctx.moveTo(gx, 0)
+      ctx.lineTo(gx + (r() - 0.5) * 3, h)
+      ctx.stroke()
+    }
+    ctx.globalAlpha = 1
+  }
+  noise(ctx, w, h, 6, r)
+}
+
+function drawRug(ctx: CanvasRenderingContext2D, w: number, h: number, a: TileArt, r: () => number) {
+  ctx.fillStyle = a.base
+  ctx.fillRect(0, 0, w, h)
+  const m = Math.min(w, h)
+  const a2 = a.accent2 ?? a.accent
+  switch (a.motif) {
+    case 'medallion': {
+      ctx.strokeStyle = a.accent
+      ctx.lineWidth = m * 0.03
+      ctx.strokeRect(m * 0.06, m * 0.06, w - m * 0.12, h - m * 0.12)
+      ctx.lineWidth = m * 0.012
+      ctx.strokeStyle = a2
+      ctx.strokeRect(m * 0.11, m * 0.11, w - m * 0.22, h - m * 0.22)
+      ctx.save()
+      ctx.translate(w / 2, h / 2)
+      ctx.fillStyle = a2
+      ctx.beginPath()
+      for (let i = 0; i < 16; i++) {
+        const rad = i % 2 ? m * 0.16 : m * 0.28
+        const an = (i / 16) * Math.PI * 2
+        ctx.lineTo(Math.cos(an) * rad * (h / w), Math.sin(an) * rad * (w > h ? 1 : h / w))
+      }
+      ctx.fill()
+      ctx.fillStyle = a.accent
+      ctx.beginPath()
+      ctx.ellipse(0, 0, m * 0.08, m * 0.11, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+      for (const [cx, cy] of [[0.18, 0.18], [0.82, 0.18], [0.18, 0.82], [0.82, 0.82]]) {
+        ctx.fillStyle = a.accent
+        ctx.beginPath()
+        ctx.arc(cx * w, cy * h, m * 0.05, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      break
+    }
+    case 'kilim': {
+      const rows = 7
+      for (let j = 0; j < rows; j++) {
+        const y = (j + 0.5) * (h / rows)
+        ctx.fillStyle = j % 2 ? a.accent : a2
+        for (let i = 0; i < 5; i++) {
+          const x = (i + 0.5) * (w / 5)
+          const s = Math.min(w / 5, h / rows) * 0.38
+          ctx.beginPath()
+          ctx.moveTo(x, y - s)
+          ctx.lineTo(x + s, y)
+          ctx.lineTo(x, y + s)
+          ctx.lineTo(x - s, y)
+          ctx.fill()
+        }
+        ctx.fillRect(0, j * (h / rows), w, m * 0.012)
+      }
+      break
+    }
+    case 'stripe': {
+      const n = 9
+      for (let j = 0; j < n; j++) {
+        ctx.fillStyle = j % 3 === 0 ? a.accent : j % 3 === 1 ? a2 : a.base
+        ctx.fillRect(0, (j * h) / n, w, h / n / 1.6)
+      }
+      break
+    }
+    case 'border': {
+      ctx.strokeStyle = a.accent
+      ctx.lineWidth = m * 0.06
+      ctx.strokeRect(m * 0.08, m * 0.08, w - m * 0.16, h - m * 0.16)
+      break
+    }
+    case 'shag':
+    default:
+      break
+  }
+  // pile texture
+  for (let i = 0; i < (w * h) / 12; i++) {
+    ctx.globalAlpha = 0.08 + r() * 0.12
+    ctx.fillStyle = r() < 0.5 ? shade(a.base, 25) : shade(a.base, -25)
+    ctx.fillRect(r() * w, r() * h, 1.2, 1.2 + r() * (a.motif === 'shag' ? 4 : 1.5))
+  }
+  ctx.globalAlpha = 1
+  noise(ctx, w, h, a.motif === 'shag' ? 18 : 10, r)
+}
+
 export function shade(hex: string, amt: number) {
   const m = hex.replace('#', '')
   const n = parseInt(m.length === 3 ? m.split('').map((x) => x + x).join('') : m, 16)
@@ -454,7 +655,8 @@ export function getTileVariants(p: Product, res = 384): Promise<HTMLCanvasElemen
         }
       return out
     }
-    for (let i = 0; i < (img ? 1 : VARIANTS); i++) {
+    const single = !!img || ['wallpaper', 'rug'].includes(p.art.kind)
+    for (let i = 0; i < (single ? 1 : VARIANTS); i++) {
       const c = mkCanvas(w, h)
       const ctx = c.getContext('2d', { willReadFrequently: true })!
       const r = rng(hashStr(p.name) + i * 7919)
@@ -467,6 +669,9 @@ export function getTileVariants(p: Product, res = 384): Promise<HTMLCanvasElemen
       else if (a.kind === 'terrazzo') drawTerrazzo(ctx, c.width, c.height, a, r)
       else if (a.kind === 'mosaic') drawMosaic(ctx, c.width, c.height, a, r)
       else if (a.kind === 'pattern') drawPattern(ctx, c.width, c.height, a, r)
+      else if (a.kind === 'wallpaper') drawWallpaper(ctx, c.width, c.height, a, r)
+      else if (a.kind === 'panel') drawPanel(ctx, c.width, c.height, a, r)
+      else if (a.kind === 'rug') drawRug(ctx, c.width, c.height, a, r)
       else if (a.kind === 'hexagon') {
         const base = a.accent2 && i % 2 ? a.accent : a.base
         drawSolid(ctx, c.width, c.height, { ...a, base, accent: shade(base, -8) }, r)

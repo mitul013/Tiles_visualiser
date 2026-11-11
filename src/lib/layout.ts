@@ -26,7 +26,7 @@ export const LAYOUTS: { id: SurfaceSettings['layout']; label: string; hint: stri
 export const GROUT_COLORS = ['#f4f2ec', '#d8d4cc', '#a9a69f', '#6c6a66', '#2e2d2b', '#c9b48f', '#8c6f52']
 
 /** How much the tone of individual tiles varies, per material (natural / handmade products vary more). */
-const TONE: Record<Material, number> = { Marble: 0.03, Wood: 0.07, Stone: 0.06, Concrete: 0.04, Terrazzo: 0.03, Ceramic: 0.025, Mosaic: 0, Pattern: 0.02, Hexagon: 0.04, Subway: 0.09, Custom: 0 }
+const TONE: Record<Material, number> = { Marble: 0.03, Wood: 0.07, Stone: 0.06, Concrete: 0.04, Terrazzo: 0.03, Ceramic: 0.025, Mosaic: 0, Pattern: 0.02, Hexagon: 0.04, Subway: 0.09, Wallpaper: 0, Panel: 0.03, Rug: 0, Custom: 0 }
 /** Materials whose tiles may be laid turned 180° to break up repetition. */
 const NATURAL = new Set<Material>(['Stone', 'Concrete', 'Terrazzo', 'Wood'])
 /** Handmade-look products get surface relief (wavy glaze) in the depth map. */

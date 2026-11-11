@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { ROOM_CATEGORIES, ROOMS } from '../data/rooms'
 import { useStore } from '../store'
 import { Icon } from './ui'
+import { useT } from '../lib/i18n'
 
 const base = import.meta.env.BASE_URL
 
 export default function RoomSelect() {
+  const t = useT()
   const openRoom = useStore((s) => s.openRoom)
   const setModal = useStore((s) => s.setModal)
   const photoRooms = useStore((s) => s.photoRooms)
@@ -21,7 +23,7 @@ export default function RoomSelect() {
   return (
     <div className="room-select">
       <h1>
-        Select a room for <span>transformation</span>
+        {t('Select a room for')} <span>{t('transformation')}</span>
       </h1>
       <div className="tips">
         <button className="tip" onClick={() => setModal('uploadRoom')}>
@@ -75,7 +77,7 @@ export default function RoomSelect() {
 
       <section id="demo-rooms">
         <div className="sec-head">
-          <h2>Demo rooms</h2>
+          <h2>{t('Demo rooms')}</h2>
           <div className="chips">
             {ROOM_CATEGORIES.map((c) => (
               <button key={c} className={cat === c ? 'on' : ''} onClick={() => setCat(c)}>
