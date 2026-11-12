@@ -78,9 +78,24 @@ export default function UploadRoomModal() {
   }
   /** continue from the first screen: with cut-outs, surfaces are detected automatically */
   const begin = async () => {
-    if (!start.photo) return
+    // the original is optional with a prepared cut-out: the cut-out flattened on white stands in
+    let photoSrc = start.photo
+    if (!photoSrc && start.matt) {
+      const ci = new Image()
+      ci.src = start.matt
+      await ci.decode()
+      const fc = document.createElement('canvas')
+      fc.width = ci.naturalWidth
+      fc.height = ci.naturalHeight
+      const fctx = fc.getContext('2d')!
+      fctx.fillStyle = '#ffffff'
+      fctx.fillRect(0, 0, fc.width, fc.height)
+      fctx.drawImage(ci, 0, 0)
+      photoSrc = fc.toDataURL('image/jpeg', 0.92)
+    }
+    if (!photoSrc) return
     const im = new Image()
-    im.src = start.photo
+    im.src = photoSrc
     await im.decode()
     const k = Math.min(1, 1600 / Math.max(im.width, im.height))
     const W = Math.round(im.width * k)
@@ -212,6 +227,50 @@ export default function UploadRoomModal() {
   }
   const drag = useRef<{ sid: string; idx: number; kind: 'area' | 'perspective' } | null>(null)
   const [tool, setTool] = useState<'area' | 'perspective'>('area')
+  /** points tapped along the floor/wall junction while splitting (null = not splitting) */
+  const [split, setSplit] = useState<[number, number][] | null>(null)
+  /**
+   * Split the active surface along the floor/wall junction: below the line = floor (keeps its
+   * perspective guide), above = one wall per segment between tapped points (corners).
+   * The cut-out still decides the exact pixels, so the line only has to be roughly right.
+   */
+  const finishSplit = () => {
+    if (!act || !split || split.length < 2) return setSplit(null)
+    const pts = [...split].sort((a, b) => a[0] - b[0])
+    const P: [number, number][] = [[-0.05, pts[0][1]], ...pts, [1.05, pts[pts.length - 1][1]]]
+    const floorArea: [number, number][] = [...P, [1.05, 1.05], [-0.05, 1.05]]
+    const ar = img ? img.w / img.h : 1.5
+    const walls: PhotoSurface[] = []
+    // one wall per segment between tapped points; the stretches out to the photo edges belong to
+    // the first / last wall (not walls of their own)
+    for (let i = 1; i < P.length - 2; i++) {
+      const [a, b] = [P[i], P[i + 1]]
+      if (b[0] - a[0] < 0.03) continue
+      const top = -0.05
+      const first = i === 1
+      const last = i === P.length - 3
+      const area: [number, number][] = [
+        [first ? P[0][0] : a[0], top],
+        [last ? P[P.length - 1][0] : b[0], top],
+        ...(last ? [P[P.length - 1]] : []),
+        b,
+        a,
+        ...(first ? [P[0]] : []),
+      ]
+      // guide: the wall strip just above the junction (a vertical rectangle in reality)
+      const hh = Math.min(0.3, Math.max(0.08, Math.min(a[1], b[1]) * 0.45))
+      const gx0 = Math.max(0.01, a[0])
+      const gx1 = Math.min(0.99, b[0])
+      const ya = a[1] + ((b[1] - a[1]) * (gx0 - a[0])) / (b[0] - a[0])
+      const yb = a[1] + ((b[1] - a[1]) * (gx1 - a[0])) / (b[0] - a[0])
+      const guide: [number, number][] = [[gx0, ya - hh], [gx1, yb - hh], [gx1, yb], [gx0, ya]]
+      const widthM = +((1.2 * Math.hypot((gx1 - gx0) * ar, yb - ya)) / hh).toFixed(2)
+      walls.push({ id: `s-${uid()}`, type: 'wall', label: `Wall ${walls.length + 1}`, quad: guide, area, size: [Math.max(0.3, widthM), 1.2] })
+    }
+    setSurfaces((ss) => [...ss.map((x) => (x.id === act.id ? { ...x, type: 'floor' as const, label: 'Floor', area: floorArea } : x)), ...walls])
+    setSplit(null)
+    toast(`Split into floor + ${walls.length} wall${walls.length === 1 ? '' : 's'}: check each wall's perspective guide`)
+  }
 
   const addSurface = (t: SurfaceType) => {
     const n = surfaces.filter((s) => s.type === t).length
@@ -301,7 +360,7 @@ export default function UploadRoomModal() {
           </label>
           <div className="start-side">
             <p className="hint">
-              <b>Have prepared cut-outs?</b> Add the <b>matt</b> (and optionally <b>glossy</b>) version of the same photo with the tile area <b>transparent</b>. Surfaces are then detected automatically and objects stay intact: no marking or brushing needed.
+              <b>Have prepared cut-outs?</b> Add the <b>matt</b> (and optionally <b>glossy</b>) version of the same photo with the tile area <b>transparent</b>. Surfaces are detected automatically, objects stay intact and the cut-out's own shadows light the tiles. The original photo is optional then.
             </p>
             {(['matt', 'glossy'] as const).map((k) => (
               <label key={k} className={`drop small${start[k] ? ' has' : ''}`}>
@@ -309,7 +368,7 @@ export default function UploadRoomModal() {
                 <input type="file" accept="image/png,image/webp" hidden onChange={(e) => pickStart(k, e.target.files?.[0])} />
               </label>
             ))}
-            <button className="btn primary block" disabled={!start.photo} onClick={() => void begin()}>
+            <button className="btn primary block" disabled={!start.photo && !start.matt} onClick={() => void begin()}>
               {start.matt ? 'Detect surfaces & continue' : 'Continue: mark surfaces'}
             </button>
           </div>
@@ -345,6 +404,10 @@ export default function UploadRoomModal() {
               preserveAspectRatio="none"
               onPointerDown={(e) => {
                 // tap on the photo in Area mode: add an outline point at the best spot
+                if (split) {
+                  setSplit([...split, toNorm(e)])
+                  return
+                }
                 if (tool !== 'area' || !act || e.target !== e.currentTarget) return
                 const p = toNorm(e)
                 const poly = act.area ?? act.quad
@@ -385,6 +448,14 @@ export default function UploadRoomModal() {
                   </clipPath>
                 ))}
               </defs>
+              {split && split.length > 0 && (
+                <g pointerEvents="none">
+                  <polyline points={[...split].sort((a, b) => a[0] - b[0]).map(([x, y]) => `${x * 1000},${y * 1000}`).join(' ')} fill="none" stroke="#ff2878" strokeWidth={3} strokeDasharray="12 6" vectorEffect="non-scaling-stroke" />
+                  {split.map(([x, y], i) => (
+                    <circle key={i} cx={x * 1000} cy={y * 1000} r={10} fill="#ff2878" stroke="#fff" strokeWidth={3} vectorEffect="non-scaling-stroke" />
+                  ))}
+                </g>
+              )}
               {surfaces.map((s) => {
                 const on = s.id === active
                 const area = s.area ?? s.quad
@@ -490,6 +561,31 @@ export default function UploadRoomModal() {
               </>
             ) : (
               <>
+            {split ? (
+              <div className="split-box">
+                <p className="hint">
+                  Tap points along the line where the <b>floor meets the walls</b>, left to right, including each room corner ({split.length} tapped).
+                </p>
+                <div className="row">
+                  <button className="btn sm" onClick={() => setSplit(null)}>
+                    Cancel
+                  </button>
+                  <button className="btn sm" disabled={!split.length} onClick={() => setSplit(split.slice(0, -1))}>
+                    Undo point
+                  </button>
+                  <button className="btn sm primary" disabled={split.length < 2} onClick={finishSplit}>
+                    Finish split
+                  </button>
+                </div>
+              </div>
+            ) : (
+              act &&
+              act.type === 'floor' && (
+                <button className="btn sm" onClick={() => setSplit([])} title="Floor and walls are one connected area? Separate them here.">
+                  Split floor / walls
+                </button>
+              )
+            )}
             <div className="seg tool-seg">
               <button className={tool === 'area' ? 'on' : ''} onClick={() => setTool('area')}>
                 Area (where tiles go)

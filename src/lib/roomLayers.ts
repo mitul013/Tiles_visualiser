@@ -177,14 +177,28 @@ export function generateLayers(photo: CanvasImageSource, W: number, H: number, q
   const cd = cut.data
   for (let i = 0; i < W * H; i++) cd[i * 4 + 3] = Math.round(255 * (1 - hole[i]))
   pctx.putImageData(cut, 0, 0)
+  if (cutout) {
+    pctx.clearRect(0, 0, W, H)
+    pctx.drawImage(cutout, 0, 0, W, H)
+  }
 
   // --- light maps at working resolution (drawn scaled up, they're smooth): white = unchanged
   const mk = () => new ImageData(w2, h2)
   const shadow = mk()
   const refl = mk()
   const high = mk()
+  // a prepared cut-out already carries the room's light and shadows in its semi-transparent pixels
+  // (drawn over the tiles), so the generated light maps stay neutral to avoid lighting twice
+  const neutral = !!cutout
   for (let i = 0; i < w2 * h2; i++) {
     const o = i * 4
+    if (neutral) {
+      shadow.data[o] = shadow.data[o + 1] = shadow.data[o + 2] = 255
+      refl.data[o] = refl.data[o + 1] = refl.data[o + 2] = 255
+      high.data[o] = high.data[o + 1] = high.data[o + 2] = 0
+      shadow.data[o + 3] = refl.data[o + 3] = high.data[o + 3] = 255
+      continue
+    }
     const mean = surfId[i] >= 0 ? means[surfId[i]] : gMean
     const dark = Math.max(0, 1 - L[i] / mean)
     const s = Math.max(0.3, 1 - 0.9 * dark) // matt: soft, diffuse shadows

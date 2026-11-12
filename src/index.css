@@ -1963,3 +1963,12 @@ input[type='range'] {
   padding: 8px 10px;
   margin: 0;
 }
+.split-box {
+  border: 1px solid #ff2878;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff3f8;
+}
+.split-box .hint {
+  margin: 0 0 6px;
+}

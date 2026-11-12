@@ -22,6 +22,27 @@ export interface DetectedSurface {
 
 type P = [number, number]
 
+function erode(m: Uint8Array, w: number, h: number, r: number) {
+  const out = new Uint8Array(w * h)
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      if (!m[y * w + x]) continue
+      let ok = 1
+      for (let dy = -r; dy <= r && ok; dy++)
+        for (let dx = -r; dx <= r; dx++) {
+          const xx = x + dx
+          const yy = y + dy
+          if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue
+          if (!m[yy * w + xx]) {
+            ok = 0
+            break
+          }
+        }
+      out[y * w + x] = ok
+    }
+  return out
+}
+
 const cross = (o: P, a: P, b: P) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
 
 function convexHull(pts: P[]): P[] {
@@ -99,11 +120,14 @@ export function detectSurfaces(alpha: Uint8ClampedArray, W: number, H: number): 
       const sy = Math.min(H - 1, Math.round(y / k))
       m[y * w + x] = alpha[sy * W + sx] < 128 ? 1 : 0
     }
+  // split surfaces that touch (e.g. wall running into floor) by eroding thin connections first,
+  // labelling the cores, then giving every remaining pixel to the nearest core
+  const core = erode(m, w, h, Math.max(1, Math.round(Math.max(w, h) / 130)))
   const label = new Int32Array(w * h).fill(-1)
   const regions: { px: number[]; minY: number; maxY: number; cy: number }[] = []
   const stack: number[] = []
   for (let i = 0; i < m.length; i++) {
-    if (!m[i] || label[i] !== -1) continue
+    if (!core[i] || label[i] !== -1) continue
     const id = regions.length
     const px: number[] = []
     stack.push(i)
@@ -120,9 +144,29 @@ export function detectSurfaces(alpha: Uint8ClampedArray, W: number, H: number): 
       maxY = Math.max(maxY, y)
       sy += y
       for (const n of [x > 0 ? j - 1 : -1, x < w - 1 ? j + 1 : -1, y > 0 ? j - w : -1, y < h - 1 ? j + w : -1])
-        if (n >= 0 && m[n] && label[n] === -1) (label[n] = id), stack.push(n)
+        if (n >= 0 && core[n] && label[n] === -1) (label[n] = id), stack.push(n)
     }
     regions.push({ px, minY, maxY, cy: sy / px.length })
+  }
+  // grow cores back over the eroded rim (breadth-first, nearest core wins)
+  let frontier: number[] = []
+  for (let i = 0; i < m.length; i++) if (label[i] !== -1) frontier.push(i)
+  while (frontier.length) {
+    const next: number[] = []
+    for (const j of frontier) {
+      const x = j % w
+      const y = (j / w) | 0
+      for (const n of [x > 0 ? j - 1 : -1, x < w - 1 ? j + 1 : -1, y > 0 ? j - w : -1, y < h - 1 ? j + w : -1])
+        if (n >= 0 && m[n] && label[n] === -1) {
+          label[n] = label[j]
+          const r = regions[label[j]]
+          r.px.push(n)
+          r.minY = Math.min(r.minY, (n / w) | 0)
+          r.maxY = Math.max(r.maxY, (n / w) | 0)
+          next.push(n)
+        }
+    }
+    frontier = next
   }
 
   const out: DetectedSurface[] = []
@@ -134,7 +178,8 @@ export function detectSurfaces(alpha: Uint8ClampedArray, W: number, H: number): 
     for (const j of r.px) {
       const x = j % w
       const y = (j / w) | 0
-      const edge = x === 0 || y === 0 || x === w - 1 || y === h - 1 || !m[j - 1] || !m[j + 1] || !m[j - w] || !m[j + w]
+      const id = label[j]
+      const edge = x === 0 || y === 0 || x === w - 1 || y === h - 1 || label[j - 1] !== id || label[j + 1] !== id || label[j - w] !== id || label[j + w] !== id
       if (edge) pts.push([x / (w - 1), y / (h - 1)])
     }
     const hull = convexHull(pts)
