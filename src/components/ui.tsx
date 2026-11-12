@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Product } from '../types'
 import { getSwatch } from '../lib/tileArt'
 
@@ -81,14 +81,31 @@ export function Modal({ title, onClose, children, wide, footer }: { title: strin
 
 export function Swatch({ product, className = '' }: { product: Product; className?: string }) {
   const [src, setSrc] = useState<string | null>(null)
+  const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     let ok = true
-    getSwatch(product).then((s) => ok && setSrc(s))
+    const el = ref.current
+    const load = () => getSwatch(product).then((s) => ok && setSrc(s))
+    // generate thumbnails only when they scroll into view
+    if (!el || typeof IntersectionObserver === 'undefined') load()
+    else {
+      const io = new IntersectionObserver((entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          io.disconnect()
+          load()
+        }
+      }, { rootMargin: '200px' })
+      io.observe(el)
+      return () => {
+        ok = false
+        io.disconnect()
+      }
+    }
     return () => {
       ok = false
     }
   }, [product])
-  return <div className={`swatch ${className}`} style={{ backgroundImage: src ? `url(${src})` : undefined }} />
+  return <div ref={ref} className={`swatch ${className}`} style={{ backgroundImage: src ? `url(${src})` : undefined }} />
 }
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined

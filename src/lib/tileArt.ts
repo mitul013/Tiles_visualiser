@@ -111,16 +111,21 @@ function drawMarble(ctx: CanvasRenderingContext2D, w: number, h: number, a: Tile
   blotches(ctx, w, h, a.accent, 12, big * 0.3, 0.07, r)
   // the slab has a dominant vein direction
   const dir = Math.PI * (0.18 + r() * 0.2)
-  // soft ghost veins
-  ctx.filter = `blur(${Math.max(2, w / 120)}px)`
-  veins(ctx, w, h, a.accent, 4, w / 70, 0.18, r, 0.25, dir)
-  ctx.filter = `blur(${Math.max(0.6, w / 900)}px)`
+  // soft ghost veins: drawn on a quarter-size canvas and scaled up, which blurs them for free
+  // (canvas blur filters are extremely slow without a GPU, e.g. on many phones)
+  const q = 4
+  const soft = document.createElement('canvas')
+  soft.width = Math.max(1, Math.round(w / q))
+  soft.height = Math.max(1, Math.round(h / q))
+  veins(soft.getContext('2d')!, soft.width, soft.height, a.accent, 4, w / 70 / q, 0.18, r, 0.25, dir)
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(soft, 0, 0, w, h)
   // main crisp veins
   veins(ctx, w, h, a.accent, 3, w / 380, 0.75, r, 0.3, dir)
   // fine hairline network
   veins(ctx, w, h, a.accent, 7, w / 1100, 0.35, r, 0.9, dir)
   if (a.accent2) veins(ctx, w, h, a.accent2, 2, w / 500, 0.55, r, 0.35, dir)
-  ctx.filter = 'none'
   noise(ctx, w, h, 5, r)
 }
 
@@ -686,20 +691,26 @@ export function getTileVariants(p: Product, res = 384): Promise<HTMLCanvasElemen
 }
 
 const swatchCache = new Map<string, Promise<string>>()
+/** Swatches are generated one at a time with a pause between, so the page never freezes. */
+let swatchChain: Promise<unknown> = Promise.resolve()
+const idle = () => new Promise<void>((res) => setTimeout(res, 16))
 /** Small square-ish preview image (data URL) for UI lists. */
 export function getSwatch(p: Product): Promise<string> {
   const key = `${p.id}:${p.art.imageUrl?.length ?? 0}`
   let s = swatchCache.get(key)
   if (!s) {
     // a real mini-layout of the tile (with grout) so proportions read correctly
-    s = (async () => {
+    const job = swatchChain.then(async () => {
+      await idle()
       const { renderTiledSurface, DEFAULT_SETTINGS } = await import('./layout')
       const [w, h] = p.size.map((x) => x / 100)
       const side = Math.max(0.3, Math.min(1.25, 2.5 * Math.min(w, h)))
       const plank = p.material === 'Wood' || p.material === 'Subway'
       const c = await renderTiledSurface(p, { ...DEFAULT_SETTINGS, layout: plank ? 'brick' : 'grid', groutMm: p.material === 'Wood' ? 1 : 2 }, [side, side], 320)
       return c.toDataURL('image/jpeg', 0.85)
-    })()
+    })
+    swatchChain = job.catch(() => undefined)
+    s = job
     swatchCache.set(key, s)
   }
   return s

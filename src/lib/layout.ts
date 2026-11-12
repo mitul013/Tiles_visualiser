@@ -225,11 +225,16 @@ export async function renderSurfaceMaps(product: Product, settings: SurfaceSetti
     const dh = swap ? iw : ih
     ctx.save()
     const b = 1 - (p.darken ?? 0) + toneShift
-    if (b !== 1) ctx.filter = `brightness(${b.toFixed(3)})`
     ctx.translate(ix + iw / 2, iy + ih / 2)
     ctx.rotate((rot * Math.PI) / 180)
     ctx.scale(p.flipX ? -1 : 1, p.flipY ? -1 : 1)
     ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh)
+    // tone variation / checkered darkening as a translucent overlay (filters are very slow on CPU canvases)
+    if (b !== 1) {
+      ctx.globalAlpha = Math.min(1, Math.abs(1 - b))
+      ctx.fillStyle = b < 1 ? '#000' : '#fff'
+      ctx.fillRect(-dw / 2, -dh / 2, dw, dh)
+    }
     ctx.restore()
     if (hctx) {
       // bevelled face: dark rim fading to white
@@ -281,8 +286,12 @@ export async function renderSurfaceMaps(product: Product, settings: SurfaceSetti
         hex(ctx, cx, y, rr)
         ctx.clip()
         const t = (r() - 0.5) * 2 * tone
-        if (t) ctx.filter = `brightness(${(1 + t).toFixed(3)})`
         ctx.drawImage(variants[Math.floor(r() * variants.length)], cx - hr, y - hr, hr * 2, hr * 2)
+        if (t) {
+          ctx.globalAlpha = Math.min(1, Math.abs(t))
+          ctx.fillStyle = t < 0 ? '#000' : '#fff'
+          ctx.fillRect(cx - hr, y - hr, hr * 2, hr * 2)
+        }
         ctx.restore()
         if (hctx) {
           hctx.fillStyle = '#fff'
