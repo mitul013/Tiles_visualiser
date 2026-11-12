@@ -166,7 +166,7 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applied, theme, room.id, room.objMask, room.layers])
+  }, [applied, theme, room.id, room.objMask, room.layers, room.surfaces])
 
   // selection overlay
   useEffect(() => {

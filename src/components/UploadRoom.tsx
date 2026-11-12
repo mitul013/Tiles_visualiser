@@ -193,6 +193,21 @@ export default function UploadRoomModal() {
   const [name, setName] = useState('My room')
   const [surfaces, setSurfaces] = useState<PhotoSurface[]>([])
   const [active, setActive] = useState<string | null>(null)
+  /** editing an existing photo room (opened from the visualiser's "Surfaces" button) */
+  const editingId = useStore((s) => s.editingRoomId)
+  const editing = useStore((s) => s.photoRooms.find((r) => r.id === s.editingRoomId))
+  useEffect(() => {
+    if (!editing) return
+    setImg({ src: editing.image, w: editing.width, h: editing.height })
+    setName(editing.name)
+    const surfs = structuredClone(editing.surfaces)
+    setSurfaces(surfs)
+    const sel = useStore.getState().selected
+    setActive(surfs.find((x) => sel.includes(x.id))?.id ?? surfs[0]?.id ?? null)
+    // a prepared cut-out already decides objects + lighting: hide the object / layer steps
+    setPrepared(editing.layers && editing.layers.source !== 'generated' ? { glossy: editing.layers.cutoutGlossy } : null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingId])
   const svgRef = useRef<SVGSVGElement>(null)
   const maskRef = useRef<HTMLCanvasElement>(null)
   const [mode, setMode] = useState<'surfaces' | 'objects' | 'cutout'>('surfaces')
@@ -339,7 +354,58 @@ export default function UploadRoomModal() {
     return [f(-PAD + (1 + 2 * PAD) * ((e.clientX - r.left) / r.width)), f(-PAD + (1 + 2 * PAD) * ((e.clientY - r.top) / r.height))]
   }
 
+  useEffect(() => {
+    if (!editing?.objMask || !img) return
+    const im = new Image()
+    im.onload = () => {
+      const cv = maskRef.current
+      if (!cv) return
+      cv.getContext('2d')!.drawImage(im, 0, 0, cv.width, cv.height)
+      const r = (roughRef.current = document.createElement('canvas'))
+      r.width = cv.width
+      r.height = cv.height
+      r.getContext('2d')!.drawImage(im, 0, 0, cv.width, cv.height)
+      setHasMask(true)
+    }
+    im.src = editing.objMask
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing?.id, img?.src])
+
+  /** Save edits to an existing room in place; applied tiles stay on surfaces that still exist. */
+  const saveEdit = async () => {
+    if (!editing || !img) return
+    const objMask = hasMask && maskRef.current ? maskRef.current.toDataURL('image/png') : undefined
+    let layers = editing.layers
+    if (Object.keys(cutout).length && !prepared) {
+      const photo = new Image()
+      photo.src = img.src
+      await photo.decode()
+      const cut = cutout.cutout ? new Image() : null
+      if (cut) {
+        cut.src = cutout.cutout!
+        await cut.decode()
+      }
+      const quads = surfaces.map((sf) => (sf.area ?? sf.quad).map(([x, y]) => [x * img.w, y * img.h] as [number, number]))
+      const gen = generateLayers(photo, img.w, img.h, quads, hasMask ? maskRef.current : null, cut)
+      layers = { ...gen, ...cutout, source: LAYER_KEYS.every((k) => cutout[k]) ? 'uploaded' : 'mixed' }
+    } else if (!layers || layers.source === 'generated') {
+      // generated light maps depend on the surfaces / objects: rebuild them
+      layers = undefined
+    }
+    useStore.getState().updatePhotoRoom(editing.id, { name, surfaces, objMask, layers })
+    const st = useStore.getState()
+    const ids = new Set(surfaces.map((x) => x.id))
+    if (st.roomId === editing.id) {
+      st.setApplied(Object.fromEntries(Object.entries(st.applied).filter(([k]) => ids.has(k))))
+      const keep = st.selected.filter((x) => ids.has(x))
+      st.select(keep.length ? keep : surfaces.slice(0, 1).map((x) => x.id))
+    }
+    close()
+    toast('Surfaces updated')
+  }
+
   const save = async () => {
+    if (editing) return saveEdit()
     if (!img) return
     const id = `photo-${uid()}`
     const objMask = hasMask && maskRef.current ? maskRef.current.toDataURL('image/png') : undefined
@@ -370,7 +436,7 @@ export default function UploadRoomModal() {
 
   return (
     <Modal
-      title="Upload a picture of your room"
+      title={editing ? `Adjust surfaces · ${editing.name}` : 'Upload a picture of your room'}
       onClose={close}
       wide="xl"
       footer={
@@ -380,18 +446,24 @@ export default function UploadRoomModal() {
               Room name <input value={name} onChange={(e) => setName(e.target.value)} />
             </label>
             <span className="grow" />
-            <button
-              className="btn"
-              onClick={() => {
-                setImg(null)
-                setPrepared(null)
-                setCutout({})
-              }}
-            >
-              Change image
-            </button>
+            {editing ? (
+              <button className="btn" onClick={close}>
+                Cancel
+              </button>
+            ) : (
+              <button
+                className="btn"
+                onClick={() => {
+                  setImg(null)
+                  setPrepared(null)
+                  setCutout({})
+                }}
+              >
+                Change image
+              </button>
+            )}
             <button className="btn primary" disabled={!surfaces.length} onClick={save}>
-              <Icon name="check" /> Use this room
+              <Icon name="check" /> {editing ? 'Save changes' : 'Use this room'}
             </button>
           </>
         ) : null

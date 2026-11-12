@@ -69,6 +69,7 @@ function Toolbar({ rootRef }: { rootRef: React.RefObject<HTMLDivElement | null> 
       <IconBtn icon="reset" label={t('Reset')} onClick={s.reset} />
       <IconBtn icon="shuffle" label={t('Random')} onClick={randomDesign} />
       <IconBtn icon="compare" label={t('Compare')} onClick={() => s.setModal('compare')} />
+      {!room && s.photoRooms.some((r) => r.id === s.roomId) && <IconBtn icon="layers" label={t('Surfaces')} onClick={() => s.editSurfaces(s.roomId)} />}
       {room && <IconBtn icon="pano" label="360°" active={s.panorama} onClick={s.togglePanorama} />}
       <div className="menu-wrap">
         <IconBtn icon="sun" label={t('Lighting')} active={menu === 'theme'} onClick={() => setMenu(menu === 'theme' ? null : 'theme')} />

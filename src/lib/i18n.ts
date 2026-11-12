@@ -12,6 +12,7 @@ export type Lang = (typeof LANGUAGES)[number]['id']
 type Dict = Record<string, string>
 
 const es: Dict = {
+  Surfaces: 'Superficies',
   Sparkles: 'Destellos',
   Undo: 'Deshacer', Redo: 'Rehacer', Reset: 'Restablecer', Random: 'Aleatorio', Compare: 'Comparar', Lighting: 'Iluminación', Save: 'Guardar',
   Catalogs: 'Catálogos', Cart: 'Carrito', Share: 'Compartir', Download: 'Descargar', More: 'Más', 'Change room': 'Cambiar sala',
@@ -24,6 +25,7 @@ const es: Dict = {
   'Rate your experience': 'Valora tu experiencia', Language: 'Idioma', 'No rug': 'Sin alfombra',
 }
 const fr: Dict = {
+  Surfaces: 'Surfaces',
   Sparkles: 'Paillettes',
   Undo: 'Annuler', Redo: 'Rétablir', Reset: 'Réinitialiser', Random: 'Aléatoire', Compare: 'Comparer', Lighting: 'Éclairage', Save: 'Enregistrer',
   Catalogs: 'Catalogues', Cart: 'Panier', Share: 'Partager', Download: 'Télécharger', More: 'Plus', 'Change room': 'Changer de pièce',
@@ -36,6 +38,7 @@ const fr: Dict = {
   'Rate your experience': 'Notez votre expérience', Language: 'Langue', 'No rug': 'Sans tapis',
 }
 const de: Dict = {
+  Surfaces: 'Flächen',
   Sparkles: 'Glitzer',
   Undo: 'Rückgängig', Redo: 'Wiederholen', Reset: 'Zurücksetzen', Random: 'Zufall', Compare: 'Vergleichen', Lighting: 'Licht', Save: 'Speichern',
   Catalogs: 'Kataloge', Cart: 'Warenkorb', Share: 'Teilen', Download: 'Download', More: 'Mehr', 'Change room': 'Raum wechseln',
@@ -48,6 +51,7 @@ const de: Dict = {
   'Rate your experience': 'Bewerten Sie uns', Language: 'Sprache', 'No rug': 'Kein Teppich',
 }
 const hi: Dict = {
+  Surfaces: 'सतहें',
   Sparkles: 'चमक',
   Undo: 'पूर्ववत', Redo: 'फिर से', Reset: 'रीसेट', Random: 'रैंडम', Compare: 'तुलना', Lighting: 'रोशनी', Save: 'सहेजें',
   Catalogs: 'कैटलॉग', Cart: 'कार्ट', Share: 'शेयर', Download: 'डाउनलोड', More: 'अधिक', 'Change room': 'कमरा बदलें',

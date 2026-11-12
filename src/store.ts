@@ -91,6 +91,11 @@ interface State {
   addCustomProduct: (p: Product) => void
   removeCustomProduct: (id: string) => void
   addPhotoRoom: (r: PhotoRoom) => void
+  /** update a photo room in place (surfaces edited from the visualiser) */
+  updatePhotoRoom: (id: string, patch: Partial<PhotoRoom>) => void
+  /** photo room open in the surface editor (null = editor creates a new room) */
+  editingRoomId: string | null
+  editSurfaces: (id: string | null) => void
   removePhotoRoom: (id: string) => void
   addCatalog: (c: CatalogEntry) => void
   removeCatalog: (id: string) => void
@@ -181,7 +186,7 @@ export const useStore = create<State>()(
         const room = getRoom(getS().roomId)
         getS().setApplied(room ? structuredClone(room.defaults) : {})
       },
-      setModal: (modal) => setS({ modal }),
+      setModal: (modal) => setS(modal ? { modal } : { modal, editingRoomId: null }),
       showProduct: (id) => setS({ productDetailId: id, modal: id ? 'product' : null }),
       setTheme: (theme) => setS({ theme }),
       toggleDark: () => setS({ dark: !getS().dark }),
@@ -189,6 +194,9 @@ export const useStore = create<State>()(
       addCustomProduct: (p) => setS({ customProducts: [p, ...getS().customProducts] }),
       removeCustomProduct: (id) => setS({ customProducts: getS().customProducts.filter((p) => p.id !== id) }),
       addPhotoRoom: (r) => setS({ photoRooms: [r, ...getS().photoRooms] }),
+      updatePhotoRoom: (id, patch) => setS({ photoRooms: getS().photoRooms.map((r) => (r.id === id ? { ...r, ...patch } : r)) }),
+      editingRoomId: null,
+      editSurfaces: (id) => setS({ editingRoomId: id, modal: id ? 'uploadRoom' : getS().modal }),
       removePhotoRoom: (id) => setS({ photoRooms: getS().photoRooms.filter((p) => p.id !== id) }),
       addCatalog: (c) => setS({ catalogs: [c, ...getS().catalogs] }),
       removeCatalog: (id) => setS({ catalogs: getS().catalogs.filter((c) => c.id !== id) }),
