@@ -145,7 +145,7 @@ function LayoutIcon({ id }: { id: string }) {
   let els: React.ReactNode[] = []
   if (id === 'grid') els = [0, 1, 2].flatMap((i) => [0, 1, 2].map((j) => r(2 + i * 9, 2 + j * 9, 9, 9, `${i}${j}`)))
   if (id === 'brick') els = [0, 1, 2].flatMap((j) => [0, 1, 2].map((i) => r(2 + i * 12 - (j % 2) * 6, 2 + j * 9, 12, 9, `${i}${j}`)))
-  if (id === 'third') els = [0, 1, 2].flatMap((j) => [0, 1, 2, 3].map((i) => r(2 + i * 12 - (j % 3) * 4, 2 + j * 9, 12, 9, `${i}${j}`)))
+  if (id === 'third') els = [0, 1, 2].flatMap((j) => [0, 1, 2, 3].map((i) => r(2 + i * 12 - (j % 3) * 3, 2 + j * 9, 12, 9, `${i}${j}`)))
   if (id === 'random') els = [0, 1, 2, 3, 4].flatMap((j) => [0, 1, 2].map((i) => r(2 + i * 16 - [3, 11, 6, 14, 1][j], 2 + j * 5.4, 16, 5.4, `${i}${j}`)))
   if (id === 'bookmatch' || id === 'endmatch' || id === 'quadmatch')
     els = [0, 1].flatMap((i) => [0, 1].map((j) => {
@@ -155,6 +155,8 @@ function LayoutIcon({ id }: { id: string }) {
       const cy = 8.5 + j * 13
       return <g key={`${i}${j}`}>{r(2 + i * 13, 2 + j * 13, 13, 13, 'b')}<path d={`M${cx - 6.5 * sx} ${cy - 6.5 * sy} Q${cx} ${cy - 2 * sy} ${cx + 6.5 * sx} ${cy + 6.5 * sy}`} {...s} /></g>
     }))
+  if (id === 'rows') els = [0, 1, 2].flatMap((j) => [0, 1, 2].map((i) => r(2 + i * 9, 2 + j * 9, 9, 9, `${i}${j}`, j === 1)))
+  if (id === 'columns') els = [0, 1, 2].flatMap((j) => [0, 1, 2].map((i) => r(2 + i * 9, 2 + j * 9, 9, 9, `${i}${j}`, i === 1)))
   if (id === 'stack') els = [0, 1, 2, 3, 4].map((i) => r(2 + i * 5.4, 2, 5.4, 27, i))
   if (id === 'checkered') els = [0, 1, 2].flatMap((i) => [0, 1, 2].map((j) => r(2 + i * 9, 2 + j * 9, 9, 9, `${i}${j}`, (i + j) % 2 === 1)))
   if (id === 'herringbone')

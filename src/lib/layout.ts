@@ -12,10 +12,12 @@ export const DEFAULT_SETTINGS: SurfaceSettings = {
 export const LAYOUTS: { id: SurfaceSettings['layout']; label: string; hint: string }[] = [
   { id: 'grid', label: 'Grid', hint: 'Straight lay' },
   { id: 'brick', label: 'Brick', hint: '1/2 offset' },
-  { id: 'third', label: '1/3 Offset', hint: 'Stretcher bond, 1/3 offset' },
+  { id: 'third', label: 'Stretcher Bond', hint: 'Offsets of 0, 1/4 and 1/2 repeating every 3 rows' },
   { id: 'random', label: 'Random', hint: 'Random plank offsets' },
   { id: 'stack', label: 'Vertical Stack', hint: 'Tiles turned 90°' },
-  { id: 'checkered', label: 'Checkered', hint: 'Alternating tone' },
+  { id: 'checkered', label: 'Checkered', hint: 'Alternate the product faces in a checkerboard' },
+  { id: 'rows', label: 'Line by Line', hint: 'Each row uses the next product face' },
+  { id: 'columns', label: 'Column by Column', hint: 'Each column uses the next product face' },
   { id: 'herringbone', label: 'Herringbone', hint: 'Best for planks' },
   { id: 'quarter', label: 'Quarter Turn', hint: 'Rotate each tile' },
   { id: 'diagonal', label: 'Diagonal', hint: '45° lay' },
@@ -26,8 +28,6 @@ export const LAYOUTS: { id: SurfaceSettings['layout']; label: string; hint: stri
 
 export const GROUT_COLORS = ['#f4f2ec', '#d8d4cc', '#a9a69f', '#6c6a66', '#2e2d2b', '#c9b48f', '#8c6f52']
 
-/** How much the tone of individual tiles varies, per material (natural / handmade products vary more). */
-const TONE: Record<Material, number> = { Marble: 0.03, Wood: 0.07, Stone: 0.06, Concrete: 0.04, Terrazzo: 0.03, Ceramic: 0.025, Mosaic: 0, Pattern: 0.02, Hexagon: 0.04, Subway: 0.09, Wallpaper: 0, Panel: 0.03, Rug: 0, Custom: 0 }
 /** Materials whose tiles may be laid turned 180° to break up repetition. */
 const NATURAL = new Set<Material>(['Stone', 'Concrete', 'Terrazzo', 'Wood'])
 /** Handmade-look products get surface relief (wavy glaze) in the depth map. */
@@ -44,7 +44,8 @@ interface Place {
   rot?: number
   flipX?: boolean
   flipY?: boolean
-  darken?: number
+  /** layout-chosen product face (index into the product's face variants) */
+  face?: number
   /** grid indices, used for continuous-vein slab cuts */
   i: number
   j: number
@@ -94,7 +95,7 @@ function placements(layout: SurfaceSettings['layout'], tw: number, th: number, D
     case 'brick':
     case 'third':
     case 'random': {
-      const offset = (k: number) => (layout === 'brick' ? (k % 2) * 0.5 : layout === 'third' ? (k % 3) / 3 : r())
+      const offset = (k: number) => (layout === 'brick' ? (k % 2) * 0.5 : layout === 'third' ? (k % 3) * 0.25 : r())
       if (th > tw) {
         // portrait tiles / planks: courses run along the long side, stagger the ends
         let i = 0
@@ -114,14 +115,21 @@ function placements(layout: SurfaceSettings['layout'], tw: number, th: number, D
     case 'checkered':
       rows((y, j) => {
         let i = 0
-        for (let x = x0; x < end; x += tw, i++) cb({ x, y, w: tw, h: th, darken: (i + j) % 2 ? 0.22 : 0, i, j })
+        for (let x = x0; x < end; x += tw, i++) cb({ x, y, w: tw, h: th, face: (i + j) % 2, i, j })
+      })
+      return
+    case 'rows':
+    case 'columns':
+      rows((y, j) => {
+        let i = 0
+        for (let x = x0; x < end; x += tw, i++) cb({ x, y, w: tw, h: th, face: layout === 'rows' ? j : i, i, j })
       })
       return
     case 'quarter': {
       const square = Math.abs(tw - th) < 0.5
       rows((y, j) => {
         let i = 0
-        for (let x = x0; x < end; x += tw, i++) cb({ x, y, w: tw, h: th, rot: square ? ((j % 2) * 2 + (i % 2)) * 90 : ((i + j) % 2) * 180, i, j })
+        for (let x = x0; x < end; x += tw, i++) cb({ x, y, w: tw, h: th, rot: square ? ((j % 2) * 2 + (i % 2)) * 90 : ((i + j) % 2) * 180, face: i + j, i, j })
       })
       return
     }
@@ -191,7 +199,6 @@ export async function renderSurfaceMaps(product: Product, settings: SurfaceSetti
   const variants = await getTileVariants(product, 384)
   const seed = hashStr(product.id + settings.layout)
   const r = rng(seed)
-  const tone = TONE[product.material] ?? 0
   const slab = variants.length === SLAB_GRID * SLAB_GRID && ['grid', 'diagonal', 'stack'].includes(settings.layout)
   const sameImage = ['bookmatch', 'endmatch', 'quadmatch'].includes(settings.layout)
   const turn180 = NATURAL.has(product.material) && ['grid', 'brick', 'third', 'random', 'diagonal'].includes(settings.layout)
@@ -214,7 +221,7 @@ export async function renderSurfaceMaps(product: Product, settings: SurfaceSetti
 
   const inView = (x: number, y: number, w: number, h: number) => !(x > D / 2 || y > D / 2 || x + w < -D / 2 || y + h < -D / 2)
 
-  const drawTile = (img: HTMLCanvasElement, p: Place, toneShift: number, extraRot: number) => {
+  const drawTile = (img: HTMLCanvasElement, p: Place, extraRot: number) => {
     const ix = p.x + g / 2
     const iy = p.y + g / 2
     const iw = Math.max(0.5, p.w - g)
@@ -224,17 +231,10 @@ export async function renderSurfaceMaps(product: Product, settings: SurfaceSetti
     const dw = swap ? ih : iw
     const dh = swap ? iw : ih
     ctx.save()
-    const b = 1 - (p.darken ?? 0) + toneShift
     ctx.translate(ix + iw / 2, iy + ih / 2)
     ctx.rotate((rot * Math.PI) / 180)
     ctx.scale(p.flipX ? -1 : 1, p.flipY ? -1 : 1)
     ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh)
-    // tone variation / checkered darkening as a translucent overlay (filters are very slow on CPU canvases)
-    if (b !== 1) {
-      ctx.globalAlpha = Math.min(1, Math.abs(1 - b))
-      ctx.fillStyle = b < 1 ? '#000' : '#fff'
-      ctx.fillRect(-dw / 2, -dh / 2, dw, dh)
-    }
     ctx.restore()
     if (hctx) {
       // bevelled face: dark rim fading to white
@@ -285,13 +285,7 @@ export async function renderSurfaceMaps(product: Product, settings: SurfaceSetti
         ctx.save()
         hex(ctx, cx, y, rr)
         ctx.clip()
-        const t = (r() - 0.5) * 2 * tone
         ctx.drawImage(variants[Math.floor(r() * variants.length)], cx - hr, y - hr, hr * 2, hr * 2)
-        if (t) {
-          ctx.globalAlpha = Math.min(1, Math.abs(t))
-          ctx.fillStyle = t < 0 ? '#000' : '#fff'
-          ctx.fillRect(cx - hr, y - hr, hr * 2, hr * 2)
-        }
         ctx.restore()
         if (hctx) {
           hctx.fillStyle = '#fff'
@@ -308,8 +302,16 @@ export async function renderSurfaceMaps(product: Product, settings: SurfaceSetti
       const toneR = r()
       const turnR = r()
       if (!inView(p.x, p.y, p.w, p.h)) return
-      const img = sameImage ? variants[0] : slab ? variants[(((p.i % SLAB_GRID) + SLAB_GRID) % SLAB_GRID) + SLAB_GRID * (((p.j % SLAB_GRID) + SLAB_GRID) % SLAB_GRID)] : variants[Math.floor(pickR * variants.length)]
-      drawTile(img, p, (toneR - 0.5) * 2 * tone, turn180 && turnR < 0.5 ? 180 : 0)
+      const mod = (a: number, n: number) => ((a % n) + n) % n
+      const img = sameImage
+        ? variants[0]
+        : p.face !== undefined
+          ? variants[mod(p.face, variants.length)] // layout picks the face; colour never changes
+          : slab
+            ? variants[mod(p.i, SLAB_GRID) + SLAB_GRID * mod(p.j, SLAB_GRID)]
+            : variants[Math.floor(pickR * variants.length)]
+      void toneR
+      drawTile(img, p, turn180 && turnR < 0.5 ? 180 : 0)
     }, aligned ? (angle % 180 === 0 ? W : H) : D, aligned ? (angle % 180 === 0 ? H : W) : D)
   }
   ctx.restore()

@@ -89,6 +89,8 @@ export type LayoutPattern =
   | 'random'
   | 'stack'
   | 'checkered'
+  | 'rows'
+  | 'columns'
   | 'herringbone'
   | 'quarter'
   | 'diagonal'
