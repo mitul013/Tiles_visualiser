@@ -60,6 +60,14 @@ npm run build && npx vite preview --port 4173 &
 npm run thumbnails   # renders public/rooms/<id>.jpg with Playwright
 ```
 
+## Deploy (free)
+
+The app is fully static (`npm run build` → `dist/`, relative paths), so any static host works:
+
+- **Netlify** or **Vercel**: "Import from GitHub" and pick this repo/branch; `netlify.toml` / `vercel.json` set the build.
+- **Cloudflare Pages**: build command `npm run build`, output `dist`, env `NODE_VERSION=22`.
+- **GitHub Pages**: Settings → Pages → Source "GitHub Actions" (workflow in `.github/workflows/pages.yml`; free for public repos).
+
 ## Project layout
 
 ```
