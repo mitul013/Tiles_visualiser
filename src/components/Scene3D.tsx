@@ -69,6 +69,8 @@ function useSurfaceTexture(surface: Surface3D, app: Application | undefined) {
 }
 
 const COUNTER_THICKNESS = 0.04
+/** surfaces that become transparent (tile area) in the library cut-out pass */
+export const CUTOUT_TYPES = new Set(['floor', 'wall', 'backsplash'])
 
 /** Rugs are placed at the product's real size (long side across the room); no rug applied = nothing drawn. */
 function RugMesh(props: { surface: Surface3D; app?: Application; selected: boolean; outdoor?: boolean; onPick: (id: string, additive: boolean) => void; onHover: (label: string | null) => void }) {
@@ -84,7 +86,7 @@ function RugMesh(props: { surface: Surface3D; app?: Application; selected: boole
   return <SurfaceMesh {...props} surface={surface} app={{ ...app, settings: { ...app.settings, layout: 'grid', groutMm: 0, rotation: 0 } }} />
 }
 
-function SurfaceMesh({ surface, app, selected, outdoor, onPick, onHover }: { surface: Surface3D; app?: Application; selected: boolean; outdoor?: boolean; onPick: (id: string, additive: boolean) => void; onHover: (label: string | null) => void }) {
+function SurfaceMesh({ surface, app, selected, outdoor, cutout, onPick, onHover }: { surface: Surface3D; app?: Application; selected: boolean; outdoor?: boolean; cutout?: boolean; onPick: (id: string, additive: boolean) => void; onHover: (label: string | null) => void }) {
   const tex = useSurfaceTexture(surface, app)
   const finish = app?.kind === 'tile' ? app.settings.finish : app?.finish ?? 'matt'
   const glossy = finish === 'glossy'
@@ -134,7 +136,10 @@ function SurfaceMesh({ surface, app, selected, outdoor, onPick, onHover }: { sur
       userData={{ surfaceId: surface.id }}
     >
       {counter ? <boxGeometry args={[surface.size[0], surface.size[1], COUNTER_THICKNESS]} /> : <planeGeometry args={surface.size} />}
-      {horizontal && glossy ? (
+      {cutout && CUTOUT_TYPES.has(surface.type) ? (
+        // library cut-out pass: the surface is transparent except for the shadows falling on it
+        <shadowMaterial transparent opacity={0.38} />
+      ) : horizontal && glossy ? (
         <MeshReflectorMaterial
           {...common}
           blur={[400, 120]}
@@ -151,7 +156,7 @@ function SurfaceMesh({ surface, app, selected, outdoor, onPick, onHover }: { sur
       ) : (
         <meshStandardMaterial {...common} roughness={tex?.rough ? 1 : glossy ? 0.12 : 0.85} envMapIntensity={glossy ? 1.0 : 0.3} />
       )}
-      {selected && <Edges color="#1e88ff" lineWidth={3} />}
+      {selected && !cutout && <Edges color="#1e88ff" lineWidth={3} />}
     </mesh>
   )
 }
@@ -292,7 +297,23 @@ function ShadowGroup({ children }: { children: React.ReactNode }) {
   return <group ref={ref}>{children}</group>
 }
 
-export default function Scene3D({ room }: { room: Room }) {
+/** Exposes the renderer + camera (library generation) and clears the background in cut-out mode. */
+function LibBridge({ cutout, onReady }: { cutout?: boolean; onReady?: (gl: THREE.WebGLRenderer, camera: THREE.Camera) => void }) {
+  const { gl, camera, scene, invalidate } = useThree()
+  useEffect(() => {
+    if (cutout) {
+      scene.background = null
+      gl.setClearColor(0x000000, 0)
+    }
+    invalidate()
+  }, [cutout, gl, scene, invalidate])
+  useEffect(() => {
+    onReady?.(gl, camera)
+  }, [gl, camera, onReady])
+  return null
+}
+
+export default function Scene3D({ room, cutout, onReady }: { room: Room; cutout?: boolean; onReady?: (gl: THREE.WebGLRenderer, camera: THREE.Camera) => void }) {
   const applied = useStore((s) => s.applied)
   const selected = useStore((s) => s.selected)
   const select = useStore((s) => s.select)
@@ -317,13 +338,14 @@ export default function Scene3D({ room }: { room: Room }) {
         dpr={[1, 2]}
         shadows="soft"
         frameloop="demand"
-        gl={{ preserveDrawingBuffer: true, antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
+        gl={{ preserveDrawingBuffer: true, antialias: true, alpha: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
         camera={{ position: room.camera.position, fov: 55, near: 0.05, far: 200 }}
         onPointerMissed={() => undefined}
         scene={{ background: bg }}
       >
         <Env />
         <CaptureBridge roomId={room.id} />
+        {(cutout !== undefined || onReady) && <LibBridge cutout={cutout} onReady={onReady} />}
         <Controls room={room} panorama={panorama} />
         <hemisphereLight args={[t.sky, t.ground, t.ambient]} />
         <ambientLight intensity={t.ambient * 0.5} color={t.color} />
@@ -349,7 +371,7 @@ export default function Scene3D({ room }: { room: Room }) {
         <pointLight position={[0, h - 0.3, 0]} intensity={room.outdoor ? 0 : 3} distance={Math.max(w, d) * 1.4} decay={1.4} color={t.color} />
         {room.surfaces.map((s) => (
           s.type === 'rug' ? <RugMesh key={s.id} surface={s} app={applied[s.id]} selected={selected.includes(s.id)} outdoor={room.outdoor} onPick={onPick} onHover={setHover} /> :
-          <SurfaceMesh key={s.id} surface={s} app={applied[s.id]} selected={selected.includes(s.id)} outdoor={room.outdoor} onPick={onPick} onHover={setHover} />
+          <SurfaceMesh key={s.id} surface={s} app={applied[s.id]} selected={selected.includes(s.id)} outdoor={room.outdoor} cutout={cutout} onPick={onPick} onHover={setHover} />
         ))}
         <ShadowGroup>
           <Furniture room={room} />

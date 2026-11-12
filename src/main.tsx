@@ -2,9 +2,10 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App'
-import { readThumbRequest, ThumbRenderer } from './components/ThumbRenderer'
+import { LibGenRenderer, readLibGenRequest, readThumbRequest, ThumbRenderer } from './components/ThumbRenderer'
 
 const thumb = readThumbRequest()
+const libgen = readLibGenRequest()
 
 // Test hook used by scripts/compare.cjs (only exposed with ?harness)
 if (new URLSearchParams(location.search).has('harness')) {
@@ -13,4 +14,4 @@ if (new URLSearchParams(location.search).has('harness')) {
   })
 }
 
-createRoot(document.getElementById('root')!).render(<StrictMode>{thumb ? <ThumbRenderer roomId={thumb} /> : <App />}</StrictMode>)
+createRoot(document.getElementById('root')!).render(<StrictMode>{libgen ? <LibGenRenderer roomId={libgen} /> : thumb ? <ThumbRenderer roomId={thumb} /> : <App />}</StrictMode>)

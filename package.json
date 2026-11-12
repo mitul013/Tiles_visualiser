@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "thumbnails": "node scripts/thumbnails.cjs",
     "compare": "node scripts/compare.cjs",
-    "fixtures": "node scripts/fetch-fixtures.cjs"
+    "fixtures": "node scripts/fetch-fixtures.cjs",
+    "library": "node scripts/library.cjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",

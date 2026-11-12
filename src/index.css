@@ -1972,3 +1972,20 @@ input[type='range'] {
 .split-box .hint {
   margin: 0 0 6px;
 }
+.source-seg {
+  margin-bottom: 14px;
+}
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.lib-card {
+  border: 0;
+  padding: 0;
+  text-align: left;
+  color: #fff;
+}
+.lib-card .rc-cat {
+  color: var(--text);
+}

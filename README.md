@@ -37,6 +37,14 @@ The feature set was mapped from the public tilesview.ai visualiser with the
 - **Product details** with size variants, specifications, details PDF
 - **Calculator & cart**: area from surfaces or dimensions (m / ft), waste %, grout, giving pieces, boxes, weight and cost, plus an inquiry form
 
+## Room library
+
+The upload dialog has a **Library** tab with ready-to-use photo rooms (`public/library/manifest.json`):
+original photo + matt (and optional glossy) cut-out with the tile area transparent and shadows baked in,
+plus exact surfaces (perspective guide, area, real size). Rooms are generated from the 3D scenes with
+`npm run library`, and your own prepared rooms can be added by dropping files in `public/library/<id>/`
+and adding an entry to the manifest.
+
 ## Run
 
 ```bash

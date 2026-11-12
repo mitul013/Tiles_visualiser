@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useStore, type PhotoSurface } from '../store'
 import type { SurfaceType } from '../types'
 import { Icon, Modal, toast } from './ui'
@@ -8,6 +8,19 @@ import { detectSurfaces } from '../lib/detectSurfaces'
 import { applyH, extendQuad, squareToQuad, type Pt } from '../lib/homography'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
+
+/** An entry of public/library/manifest.json (see scripts/library.cjs). */
+interface LibraryRoom {
+  id: string
+  name: string
+  category: string
+  width: number
+  height: number
+  original: string
+  matt: string
+  glossy?: string
+  surfaces: PhotoSurface[]
+}
 
 type LayerKey = 'cutout' | 'shadow' | 'reflection' | 'highlight'
 const LAYER_KEYS: LayerKey[] = ['cutout', 'shadow', 'reflection', 'highlight']
@@ -52,6 +65,44 @@ export default function UploadRoomModal() {
   const addRoom = useStore((s) => s.addPhotoRoom)
   const openRoom = useStore((s) => s.openRoom)
   const [img, setImg] = useState<{ src: string; w: number; h: number } | null>(null)
+  /** first-screen source: the user's own files, or the bundled room library */
+  const [source, setSource] = useState<'device' | 'library'>('device')
+  const [library, setLibrary] = useState<LibraryRoom[] | null>(null)
+  useEffect(() => {
+    if (source !== 'library' || library) return
+    fetch(`${import.meta.env.BASE_URL}library/manifest.json`)
+      .then((r) => r.json())
+      .then((m: { rooms: LibraryRoom[] }) => setLibrary(m.rooms))
+      .catch(() => setLibrary([]))
+  }, [source, library])
+  /** Library rooms are fully prepared: cut-outs carry objects + lighting, surfaces carry exact planes. */
+  const openLibraryRoom = (r: LibraryRoom) => {
+    const st = useStore.getState()
+    const url = (f: string) => `${import.meta.env.BASE_URL}${f}`
+    const flat = (color: string) => {
+      const c = document.createElement('canvas')
+      c.width = c.height = 2
+      const x = c.getContext('2d')!
+      x.fillStyle = color
+      x.fillRect(0, 0, 2, 2)
+      return c.toDataURL('image/png')
+    }
+    if (!st.photoRooms.some((x) => x.id === r.id))
+      addRoom({
+        id: r.id,
+        name: r.name,
+        image: url(r.original),
+        width: r.width,
+        height: r.height,
+        surfaces: r.surfaces,
+        // the cut-out's own semi-transparent pixels light the tiles: generated light maps stay neutral
+        layers: { cutout: url(r.matt), cutoutGlossy: r.glossy ? url(r.glossy) : undefined, shadow: flat('#ffffff'), reflection: flat('#ffffff'), highlight: flat('#000000'), source: 'uploaded' },
+        createdAt: Date.now(),
+      })
+    openRoom(r.id, {})
+    close()
+    toast(`${r.name} ready: pick a tile to apply`)
+  }
   /** files chosen on the first screen: original photo + optional prepared cut-outs */
   const [start, setStart] = useState<{ photo?: string; matt?: string; glossy?: string }>({})
   const [prepared, setPrepared] = useState<{ glossy?: string } | null>(null)
@@ -346,7 +397,32 @@ export default function UploadRoomModal() {
         ) : null
       }
     >
-      {!img ? (
+      {!img && (
+        <div className="seg source-seg">
+          <button className={source === 'device' ? 'on' : ''} onClick={() => setSource('device')}>
+            <Icon name="upload" size={15} /> From your device
+          </button>
+          <button className={source === 'library' ? 'on' : ''} onClick={() => setSource('library')}>
+            <Icon name="grid" size={15} /> Library
+          </button>
+        </div>
+      )}
+      {!img && source === 'library' ? (
+        <div className="library-grid">
+          {library === null && <p className="hint">Loading library…</p>}
+          {library?.length === 0 && <p className="hint">No library rooms available.</p>}
+          {library?.map((r) => (
+            <button key={r.id} className="room-card lib-card" onClick={() => openLibraryRoom(r)}>
+              <img src={`${import.meta.env.BASE_URL}${r.original}`} alt={r.name} loading="lazy" />
+              <span className="rc-cat">{r.category}</span>
+              <div className="rc-foot">
+                <b>{r.name}</b>
+                <small>{r.surfaces.map((x) => x.label).join(' · ')}</small>
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : !img ? (
         <div className="start-upload">
           <label className={`drop big${start.photo ? ' has' : ''}`}>
             {start.photo ? <img src={start.photo} alt="room" /> : (
