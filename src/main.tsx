@@ -8,8 +8,8 @@ const thumb = readThumbRequest()
 
 // Test hook used by scripts/compare.cjs (only exposed with ?harness)
 if (new URLSearchParams(location.search).has('harness')) {
-  void Promise.all([import('./store'), import('./data/products'), import('./lib/objectMask')]).then(([store, products, om]) => {
-    ;(window as unknown as Record<string, unknown>).__tv = { useStore: store.useStore, PRODUCTS: products.PRODUCTS, refineMaskCanvas: om.refineMaskCanvas }
+  void Promise.all([import('./store'), import('./data/products'), import('./lib/objectMask'), import('./lib/layout'), import('./lib/homography')]).then(([store, products, om, layout, homo]) => {
+    ;(window as unknown as Record<string, unknown>).__tv = { useStore: store.useStore, PRODUCTS: products.PRODUCTS, refineMaskCanvas: om.refineMaskCanvas, renderTiledSurface: layout.renderTiledSurface, drawPerspective: homo.drawPerspective, coverQuad: homo.coverQuad }
   })
 }
 

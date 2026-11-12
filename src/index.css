@@ -1912,3 +1912,54 @@ input[type='range'] {
   letter-spacing: 0;
   font-size: 12px;
 }
+/* corner layer extends 15% past each photo edge (floors that run out of the frame) */
+.editor-stage svg.corners {
+  inset: -15%;
+  width: 130%;
+  height: 130%;
+  overflow: visible;
+}
+.editor-stage {
+  margin: 7% auto;
+  width: 82%;
+  outline: 1px dashed rgba(0, 0, 0, 0.25);
+}
+.start-upload {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px;
+}
+.start-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.drop.big.has {
+  padding: 0;
+  overflow: hidden;
+}
+.drop.big.has img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+@media (max-width: 900px) {
+  .start-upload {
+    grid-template-columns: 1fr;
+  }
+  .editor-stage {
+    width: 74%;
+  }
+}
+.tool-seg {
+  width: 100%;
+}
+.tool-seg button {
+  flex: 1;
+}
+.tool-hint {
+  background: var(--chip);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 0;
+}

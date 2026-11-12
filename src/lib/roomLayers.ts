@@ -18,6 +18,8 @@ import { pointInQuad, type Pt } from './homography'
 
 export interface RoomLayers {
   cutout: string
+  /** optional glossy cut-out (e.g. with soft reflections/shadows baked in), used inside glossy surfaces */
+  cutoutGlossy?: string
   shadow: string
   reflection: string
   highlight: string
@@ -118,35 +120,44 @@ export function generateLayers(photo: CanvasImageSource, W: number, H: number, q
     for (let i = 0; i < W * H; i++) hole[i] = (sd[i * 4 + 3] / 255) * (obj ? 1 - obj[i] / 255 : 1)
   }
 
-  // --- room light: luminance with the old surface's texture removed.
-  // Morphological opening (erase thin bright lines: veins, specks) then closing (erase thin dark
-  // lines: grout, joints) keeps broad light and object shadows; a final blur smooths it.
-  const lc0 = canvas(W, H)
+  // --- room light, estimated on a small working copy (light varies smoothly; this keeps big phone
+  // photos fast). Morphological opening (erase thin bright lines: veins, specks) then closing
+  // (erase thin dark lines: grout, joints) keeps broad light and object shadows; then smooth.
+  const k = Math.min(1, 420 / Math.max(W, H))
+  const w2 = Math.max(2, Math.round(W * k))
+  const h2 = Math.max(2, Math.round(H * k))
+  const lc0 = canvas(w2, h2)
   const l0ctx = lc0.getContext('2d', { willReadFrequently: true })!
-  l0ctx.filter = 'blur(1px)'
-  l0ctx.drawImage(photo, 0, 0, W, H)
-  const raw = l0ctx.getImageData(0, 0, W, H).data
-  let L: Float32Array<ArrayBufferLike> = new Float32Array(W * H)
-  for (let i = 0; i < W * H; i++) L[i] = 0.299 * raw[i * 4] + 0.587 * raw[i * 4 + 1] + 0.114 * raw[i * 4 + 2]
+  l0ctx.imageSmoothingQuality = 'high'
+  l0ctx.drawImage(photo, 0, 0, w2, h2)
+  const raw = l0ctx.getImageData(0, 0, w2, h2).data
+  let L: Float32Array<ArrayBufferLike> = new Float32Array(w2 * h2)
+  for (let i = 0; i < w2 * h2; i++) L[i] = 0.299 * raw[i * 4] + 0.587 * raw[i * 4 + 1] + 0.114 * raw[i * 4 + 2]
   // window large enough to erase thick veins / grout of the old surface (object shadows are larger)
-  const rad = Math.max(3, Math.round(W / 70))
-  L = morph(morph(L, W, H, rad, Math.min), W, H, rad, Math.max) // opening
-  L = morph(morph(L, W, H, rad, Math.max), W, H, rad, Math.min) // closing
-  L = smooth(L, W, H, Math.max(2, Math.round(W / 220)))
+  const rad = Math.max(2, Math.round(w2 / 70))
+  L = morph(morph(L, w2, h2, rad, Math.min), w2, h2, rad, Math.max) // opening
+  L = morph(morph(L, w2, h2, rad, Math.max), w2, h2, rad, Math.min) // closing
+  L = smooth(L, w2, h2, Math.max(1, Math.round(w2 / 220)))
 
-  // mean light per surface (so a tile keeps its true colour on average)
-  const surfId = new Int16Array(W * H).fill(-1)
+  // tile area + surface id at working resolution; mean light per surface
+  const smallQuads = quads.map((q) => q.map(([x, y]) => [x * k, y * k] as Pt))
+  const holeS = new Float32Array(w2 * h2)
+  const surfId = new Int16Array(w2 * h2).fill(-1)
   const sums = quads.map(() => [0, 0])
   let gs = 0
   let gn = 0
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      const i = y * W + x
-      if (hole[i] < 0.05) continue
-      let id = quads.findIndex((q) => pointInQuad([x, y], q))
+  for (let y = 0; y < h2; y++)
+    for (let x = 0; x < w2; x++) {
+      const i = y * w2 + x
+      const fx = Math.min(W - 1, Math.round(x / k))
+      const fy = Math.min(H - 1, Math.round(y / k))
+      const hv = hole[fy * W + fx]
+      holeS[i] = hv
+      if (hv < 0.05) continue
+      let id = smallQuads.findIndex((q) => pointInQuad([x, y], q))
       if (id < 0) id = 0
       surfId[i] = id
-      if ((x & 1) === 0 && (y & 1) === 0 && hole[i] > 0.9) {
+      if (hv > 0.9) {
         if (sums[id]) {
           sums[id][0] += L[i]
           sums[id][1]++
@@ -156,7 +167,7 @@ export function generateLayers(photo: CanvasImageSource, W: number, H: number, q
       }
     }
   const gMean = Math.max(8, gn ? gs / gn : 128)
-  const means = sums.map(([s, n]) => Math.max(8, n > 50 ? s / n : gMean))
+  const means = sums.map(([s, n]) => Math.max(8, n > 12 ? s / n : gMean))
 
   // --- cut-out (full res, PNG with alpha)
   const pc = canvas(W, H)
@@ -167,33 +178,25 @@ export function generateLayers(photo: CanvasImageSource, W: number, H: number, q
   for (let i = 0; i < W * H; i++) cd[i * 4 + 3] = Math.round(255 * (1 - hole[i]))
   pctx.putImageData(cut, 0, 0)
 
-  // --- light maps (half res, they're smooth): white = unchanged
-  const w2 = Math.max(2, Math.round(W / 2))
-  const h2 = Math.max(2, Math.round(H / 2))
+  // --- light maps at working resolution (drawn scaled up, they're smooth): white = unchanged
   const mk = () => new ImageData(w2, h2)
   const shadow = mk()
   const refl = mk()
   const high = mk()
-  for (let y = 0; y < h2; y++)
-    for (let x = 0; x < w2; x++) {
-      const sx = Math.min(W - 1, x * 2)
-      const sy = Math.min(H - 1, y * 2)
-      const i = sy * W + sx
-      const o = (y * w2 + x) * 4
-      const mean = surfId[i] >= 0 ? means[surfId[i]] : gMean
-      const r = L[i] / mean
-      const dark = Math.max(0, 1 - r)
-      const bright = Math.max(0, r - 1)
-      const s = Math.max(0.3, 1 - 0.9 * dark) // matt: soft, diffuse shadows
-      const g = Math.max(0.25, 1 - 1.05 * dark) // glossy: crisper, deeper
-      // highlights in absolute brightness (a ratio over-brightens dark surfaces)
-      const h = Math.min(0.6, Math.max(0, ((L[i] - mean) / 255) * 1.4)) // sun patches / sheen
-      void bright
-      shadow.data[o] = shadow.data[o + 1] = shadow.data[o + 2] = 255 * s
-      refl.data[o] = refl.data[o + 1] = refl.data[o + 2] = 255 * g
-      high.data[o] = high.data[o + 1] = high.data[o + 2] = 255 * h
-      shadow.data[o + 3] = refl.data[o + 3] = high.data[o + 3] = 255
-    }
+  for (let i = 0; i < w2 * h2; i++) {
+    const o = i * 4
+    const mean = surfId[i] >= 0 ? means[surfId[i]] : gMean
+    const dark = Math.max(0, 1 - L[i] / mean)
+    const s = Math.max(0.3, 1 - 0.9 * dark) // matt: soft, diffuse shadows
+    const g = Math.max(0.25, 1 - 1.05 * dark) // glossy: crisper, deeper
+    // highlights in absolute brightness (a ratio over-brightens dark surfaces)
+    const h = Math.min(0.6, Math.max(0, ((L[i] - mean) / 255) * 1.4)) // sun patches / sheen
+    shadow.data[o] = shadow.data[o + 1] = shadow.data[o + 2] = 255 * s
+    refl.data[o] = refl.data[o + 1] = refl.data[o + 2] = 255 * g
+    high.data[o] = high.data[o + 1] = high.data[o + 2] = 255 * h
+    shadow.data[o + 3] = refl.data[o + 3] = high.data[o + 3] = 255
+  }
+  void holeS
   const toUrl = (img: ImageData) => {
     const c = canvas(w2, h2)
     c.getContext('2d')!.putImageData(img, 0, 0)

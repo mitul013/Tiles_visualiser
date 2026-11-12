@@ -18,14 +18,21 @@ const seamless = (p?: Product) => !!p && ['Wallpaper', 'Panel', 'Rug'].includes(
 export function applyProduct(p: Product) {
   const s = useStore.getState()
   const surfaces = surfacesForRoom(s.roomId, s.photoRooms)
-  const targets = s.selected.filter((id) => {
+  let targets = s.selected.filter((id) => {
     const surf = surfaces.find((x) => x.id === id)
     return surf && p.application.includes(surf.type)
   })
-  const skipped = s.selected.length - targets.length
+  const skipped = s.selected.filter((id) => surfaces.some((x) => x.id === id)).length - targets.length
   if (!targets.length) {
-    toast(s.selected.length ? `${p.name} isn't suitable for the selected surface` : 'Select a surface first')
-    return
+    // nothing suitable selected: use the first surface of this room that accepts the product
+    const fallback = surfaces.find((x) => p.application.includes(x.type))
+    if (!fallback) {
+      toast(`${p.name} can't be used in this room`)
+      return
+    }
+    targets = surfaces.filter((x) => x.type === fallback.type).map((x) => x.id)
+    s.select(targets)
+    toast(`Applied to ${fallback.type === 'wall' && targets.length > 1 ? 'walls' : fallback.label}`)
   }
   s.apply(targets, (prev) => ({
     kind: 'tile',
@@ -38,7 +45,7 @@ export function applyProduct(p: Product) {
   }))
   s.pushHistory(p.id)
   notifyHost('PRODUCT_CLICK', { id: p.id, sku: p.sku, name: p.name, surfaces: targets })
-  if (skipped) toast(`Applied to ${targets.length} surface(s); ${skipped} not suitable`)
+  if (skipped > 0) toast(`Applied to ${targets.length} surface(s); ${skipped} not suitable`)
 }
 
 export default function ProductPanel() {
@@ -66,6 +73,7 @@ export default function ProductPanel() {
   const [view, setView] = useState<'grid' | 'list'>('grid')
 
   const surfaces = surfacesForRoom(roomId, photoRooms)
+  const roomTypes = [...new Set(surfaces.map((x) => x.type))]
   const selTypes = new Set<SurfaceType>(selected.map((id) => surfaces.find((s) => s.id === id)?.type).filter(Boolean) as SurfaceType[])
   const allSizes = useMemo(() => Array.from(new Set(all.map((p) => sizeLabel(p.size)))).sort((a, b) => parseFloat(a) - parseFloat(b)), [all])
 
@@ -79,6 +87,7 @@ export default function ProductPanel() {
         (!colors.length || colors.includes(p.color)) &&
         (!sizes.length || sizes.includes(sizeLabel(p.size))) &&
         (!finish || p.finish === finish) &&
+        roomTypes.some((t) => p.application.includes(t)) &&
         (!onlySuitable || !selTypes.size || [...selTypes].every((t) => p.application.includes(t))),
     )
     const cmp: Record<Sort, (a: Product, b: Product) => number> = {
@@ -90,7 +99,7 @@ export default function ProductPanel() {
     }
     return r.sort(cmp[sort])
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [all, q, mats, colors, sizes, finish, onlySuitable, sort, [...selTypes].join()])
+  }, [all, q, mats, colors, sizes, finish, onlySuitable, sort, [...selTypes].join(), roomTypes.join()])
 
   const activeFilterCount = mats.length + colors.length + sizes.length + (finish ? 1 : 0)
   const toggle = <T,>(arr: T[], v: T, set: (a: T[]) => void) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { findPaint, findProduct, useStore, type PhotoRoom } from '../store'
 import { renderPaint, renderTiledSurface } from '../lib/layout'
 import { loadImage } from '../lib/tileArt'
-import { drawPerspective, pointInQuad, quadPath, type Pt } from '../lib/homography'
+import { coverQuad, drawPerspective, pointInQuad, quadPath, type Pt } from '../lib/homography'
 import { generateLayers, isCurrentLayers, type RoomLayers } from '../lib/roomLayers'
 import type { Application, LightTheme } from '../types'
 
@@ -12,12 +12,12 @@ const layerCache = new Map<string, Promise<RoomLayers>>()
 /** The room's layers: uploaded/saved ones, or generated once from the photo + surfaces + objects. */
 function getLayers(room: PhotoRoom, photo: HTMLImageElement): Promise<RoomLayers> {
   if (isCurrentLayers(room.layers)) return Promise.resolve(room.layers)
-  const key = `${room.id}:${room.objMask?.length ?? 0}:${JSON.stringify(room.surfaces.map((s) => s.quad))}`
+  const key = `${room.id}:${room.objMask?.length ?? 0}:${JSON.stringify(room.surfaces.map((s) => s.area ?? s.quad))}`
   let p = layerCache.get(key)
   if (!p) {
     p = (async () => {
       const obj = room.objMask ? await loadImage(room.objMask) : null
-      const quads = room.surfaces.map((s) => s.quad.map(([x, y]) => [x * room.width, y * room.height] as Pt))
+      const quads = room.surfaces.map((s) => (s.area ?? s.quad).map(([x, y]) => [x * room.width, y * room.height] as Pt))
       const layers = generateLayers(photo, room.width, room.height, quads, obj)
       // persist so the room loads instantly next time
       useStore.setState((st) => ({ photoRooms: st.photoRooms.map((r) => (r.id === room.id ? { ...r, layers } : r)) }))
@@ -28,10 +28,10 @@ function getLayers(room: PhotoRoom, photo: HTMLImageElement): Promise<RoomLayers
   return p
 }
 
-async function surfaceImage(app: Application, size: [number, number]) {
+async function surfaceImage(app: Application, size: [number, number], maxTex = 1600) {
   if (app.kind === 'tile') {
     const p = findProduct(app.productId)
-    return p ? renderTiledSurface(p, app.settings, size, 1600) : null
+    return p ? renderTiledSurface(p, app.settings, size, maxTex) : null
   }
   const paint = findPaint(app.paintId)
   if (!paint) return null
@@ -57,7 +57,7 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
 
   const W = room.width
   const H = room.height
-  const quads = room.surfaces.map((s) => ({ ...s, q: s.quad.map(([x, y]) => [x * W, y * H] as Pt) }))
+  const quads = room.surfaces.map((s) => ({ ...s, q: s.quad.map(([x, y]) => [x * W, y * H] as Pt), outline: (s.area ?? s.quad).map(([x, y]) => [x * W, y * H] as Pt) }))
 
   // main composite
   useEffect(() => {
@@ -68,14 +68,25 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
       if (!cv || cancelled) return
       cv.dataset.ready = '0'
       cv.dataset.room = room.id
-      const tiles: { q: Pt[]; img: HTMLCanvasElement; id: string; glossy: boolean }[] = []
+      const layers = await getLayers(room, photo)
+      // a prepared cut-out defines the tile area exactly, so the plane may extend freely under it
+      const cutoutDefinesArea = layers.source !== 'generated'
+      const tiles: { q: Pt[]; ext: Pt[]; img: HTMLCanvasElement; id: string; glossy: boolean }[] = []
       for (const sf of quads) {
         const app = applied[sf.id]
         if (!app) continue
-        const img = await surfaceImage(app, sf.size)
-        if (img) tiles.push({ q: sf.q, img, id: sf.id, glossy: (app.kind === 'tile' ? app.settings.finish : app.finish) === 'glossy' })
+        // extend the perspective plane beyond the guide rectangle so it covers the whole area,
+        // including parts that run out of the photo; the area / cut-out decides what shows
+        const extend = !!sf.area || cutoutDefinesArea
+        // visible part of the area (plus the photo frame when the cut-out decides) → exact plane range
+        const frame: Pt[] = [[0, 0], [W, 0], [W, H], [0, H]]
+        const coverPoly = sf.area ? sf.area.map(([x, y]) => [Math.min(W, Math.max(0, x * W)), Math.min(H, Math.max(0, y * H))] as Pt) : frame
+        const ex = extend ? coverQuad(sf.q, coverPoly) : { quad: sf.q, u0: 0, u1: 1, v0: 0, v1: 1 }
+        const size: [number, number] = [sf.size[0] * (ex.u1 - ex.u0), sf.size[1] * (ex.v1 - ex.v0)]
+        const img = await surfaceImage(app, size, extend ? 2600 : 1600)
+        const clip = sf.area ? sf.area.map(([x, y]) => [x * W, y * H] as Pt) : extend ? ex.quad : sf.q
+        if (img) tiles.push({ q: clip, ext: ex.quad, img, id: sf.id, glossy: (app.kind === 'tile' ? app.settings.finish : app.finish) === 'glossy' })
       }
-      const layers = await getLayers(room, photo)
       const [cutout, shadow, reflection, highlight] = await Promise.all([layers.cutout, layers.shadow, layers.reflection, layers.highlight].map(loadImage))
       if (cancelled) return
       const ctx = cv.getContext('2d')!
@@ -88,7 +99,7 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
         ctx.save()
         quadPath(ctx, t.q)
         ctx.clip()
-        drawPerspective(ctx, t.img, t.q)
+        drawPerspective(ctx, t.img, t.ext, 32)
         ctx.restore()
       }
       // 2. room light on the tiles (multiply): matt surfaces use the shadow map,
@@ -123,9 +134,27 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
       ctx.drawImage(lightL, 0, 0)
       ctx.globalCompositeOperation = 'screen'
       ctx.drawImage(highL, 0, 0)
-      // 4. cut-out on top: objects and everything untiled stay pixel-perfect
+      // 4. cut-out on top: objects and everything untiled stay pixel-perfect.
+      //    Glossy surfaces use the glossy cut-out when the room provides one.
       ctx.globalCompositeOperation = 'source-over'
-      ctx.drawImage(cutout, 0, 0, W, H)
+      const glossyCut = layers.cutoutGlossy ? await loadImage(layers.cutoutGlossy) : null
+      if (cancelled) return
+      if (glossyCut && tiles.some((x) => x.glossy)) {
+        const ov = document.createElement('canvas')
+        ov.width = W
+        ov.height = H
+        const octx = ov.getContext('2d')!
+        octx.drawImage(cutout, 0, 0, W, H)
+        for (const t of tiles.filter((x) => x.glossy)) {
+          octx.save()
+          quadPath(octx, t.q)
+          octx.clip()
+          octx.clearRect(0, 0, W, H)
+          octx.drawImage(glossyCut, 0, 0, W, H)
+          octx.restore()
+        }
+        ctx.drawImage(ov, 0, 0)
+      } else ctx.drawImage(cutout, 0, 0, W, H)
       cv.dataset.ready = '1'
       const tint = TINT[theme]
       if (tint) {
@@ -148,7 +177,7 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
     for (const s of quads) {
       const sel = selected.includes(s.id)
       if (!sel && hover !== s.id) continue
-      quadPath(ctx, s.q)
+      quadPath(ctx, s.outline)
       ctx.lineWidth = Math.max(2, W / 400)
       ctx.setLineDash(sel ? [] : [10, 8])
       ctx.strokeStyle = sel ? '#1e88ff' : 'rgba(255,255,255,0.9)'
@@ -176,7 +205,7 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
     const r = e.currentTarget.getBoundingClientRect()
     return [((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H]
   }
-  const hit = (p: Pt) => [...quads].reverse().find((s) => pointInQuad(p, s.q))
+  const hit = (p: Pt) => [...quads].reverse().find((s) => pointInQuad(p, s.outline))
 
   return (
     <div className="scene-wrap photo">

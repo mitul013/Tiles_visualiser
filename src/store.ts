@@ -11,7 +11,13 @@ export interface PhotoSurface {
   id: string
   label: string
   type: SurfaceType
+  /** perspective guide: any real-world rectangle on this surface (TL, TR, BR, BL), normalised */
   quad: [number, number][]
+  /**
+   * where tiles go (normalised polygon, may extend past the photo edge). The plane defined by the
+   * guide is extended to cover it. Omitted = the guide quad itself (or the room's cut-out).
+   */
+  area?: [number, number][]
   size: [number, number]
 }
 export interface PhotoRoom {
@@ -137,13 +143,16 @@ export const useStore = create<State>()(
       setOpen: (open) => setS({ open }),
       openRoom: (roomId, applied) => {
         const room = getRoom(roomId)
+        // select this room's own floor (photo rooms use generated surface ids)
+        const surfs = surfacesForRoom(roomId, getS().photoRooms)
+        const first = surfs.find((x) => x.type === 'floor') ?? surfs[0]
         setS({
           roomId,
           view: 'visualizer',
           applied: applied ?? (room ? structuredClone(room.defaults) : {}),
           past: [],
           future: [],
-          selected: ['floor'],
+          selected: first ? [first.id] : [],
           panorama: false,
           originalShot: null,
           open: true,

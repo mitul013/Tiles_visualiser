@@ -68,7 +68,14 @@ function drawTri(ctx: CanvasRenderingContext2D, img: CanvasImageSource, d: Pt[],
   const e = (u0 * y1 + y0 * u2 + u1 * y2 - y1 * u2 - y0 * u1 - u0 * y2) / den
   const f = (u0 * v1 * y2 + v0 * y1 * u2 + y0 * u1 * v2 - y0 * v1 * u2 - v0 * u1 * y2 - u0 * y1 * v2) / den
   ctx.transform(a, dd, b, e, c, f)
-  ctx.drawImage(img, 0, 0)
+  // draw only the source cell this triangle needs (drawing the whole image per triangle is ~1000x slower)
+  const iw = (img as HTMLCanvasElement).width
+  const ih = (img as HTMLCanvasElement).height
+  const sx = Math.max(0, Math.floor(Math.min(u0, u1, u2)) - 1)
+  const sy = Math.max(0, Math.floor(Math.min(v0, v1, v2)) - 1)
+  const ex = Math.min(iw, Math.ceil(Math.max(u0, u1, u2)) + 1)
+  const ey = Math.min(ih, Math.ceil(Math.max(v0, v1, v2)) + 1)
+  if (ex > sx && ey > sy) ctx.drawImage(img, sx, sy, ex - sx, ey - sy, sx, sy, ex - sx, ey - sy)
   ctx.restore()
 }
 
@@ -107,5 +114,77 @@ export function pointInQuad(p: Pt, q: Pt[]) {
 export const quadPath = (ctx: CanvasRenderingContext2D, q: Pt[]) => {
   ctx.beginPath()
   q.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)))
+  ctx.closePath()
+}
+
+/**
+ * Extend a perspective guide quad (a real-world rectangle seen in the photo) across the whole plane.
+ * Returns a larger quad in pixel coords plus the parameter range it covers (in units of the guide
+ * rectangle), stopping before the horizon so every corner stays in front of the camera.
+ */
+/** Inverse of a 3x3 homography (row-major). */
+export function invert3(m: number[]): number[] {
+  const [a, b, c, d, e, f, g, h, i] = m
+  const A = e * i - f * h
+  const B = -(d * i - f * g)
+  const C = d * h - e * g
+  const det = a * A + b * B + c * C || 1e-12
+  return [A / det, -(b * i - c * h) / det, (b * f - c * e) / det, B / det, (a * i - c * g) / det, -(a * f - c * d) / det, C / det, -(a * h - b * g) / det, (a * e - b * d) / det]
+}
+
+/**
+ * Plane range (in guide units) needed to cover an area polygon, clamped to the safe extension.
+ * Points beyond the horizon map behind the camera and are ignored.
+ */
+export function coverQuad(q: Pt[], area: Pt[], margin = 0.15) {
+  const safe = extendQuad(q)
+  const Hi = invert3(squareToQuad(q))
+  let [u0, u1, v0, v1] = [Infinity, -Infinity, Infinity, -Infinity]
+  for (const [x, y] of area) {
+    const w = Hi[6] * x + Hi[7] * y + Hi[8]
+    if (w <= 1e-9) continue
+    const u = (Hi[0] * x + Hi[1] * y + Hi[2]) / w
+    const v = (Hi[3] * x + Hi[4] * y + Hi[5]) / w
+    u0 = Math.min(u0, u)
+    u1 = Math.max(u1, u)
+    v0 = Math.min(v0, v)
+    v1 = Math.max(v1, v)
+  }
+  if (!isFinite(u0)) return safe
+  u0 = Math.max(safe.u0, u0 - margin)
+  u1 = Math.min(safe.u1, u1 + margin)
+  v0 = Math.max(safe.v0, v0 - margin)
+  v1 = Math.min(safe.v1, v1 + margin)
+  const H = squareToQuad(q)
+  return { quad: [applyH(H, u0, v0), applyH(H, u1, v0), applyH(H, u1, v1), applyH(H, u0, v1)], u0, u1, v0, v1 }
+}
+
+export function extendQuad(q: Pt[], reach = 4): { quad: Pt[]; u0: number; u1: number; v0: number; v1: number } {
+  const H = squareToQuad(q)
+  const w = (u: number, v: number) => H[6] * u + H[7] * v + H[8]
+  const wc = w(0.5, 0.5)
+  const ok = (u: number, v: number) => w(u, v) / wc > 0.18
+  let [u0, u1, v0, v1] = [-reach, 1 + reach, -reach, 1 + reach]
+  // pull back only the side heading towards the horizon (keep full reach sideways)
+  for (let it = 0; it < 80; it++) {
+    const corners: [number, number][] = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]
+    const badCorner = corners.find(([u, v]) => !ok(u, v))
+    if (!badCorner) break
+    const [bu, bv] = badCorner
+    // which edge of this corner points at the horizon: the one along which w drops faster
+    const du = Math.abs(w(bu, 0.5) - wc)
+    const dv = Math.abs(w(0.5, bv) - wc)
+    if (dv >= du) {
+      if (bv === v0) v0 = v0 * 0.85
+      else v1 = 1 + (v1 - 1) * 0.85
+    } else if (bu === u0) u0 = u0 * 0.85
+    else u1 = 1 + (u1 - 1) * 0.85
+  }
+  return { quad: [applyH(H, u0, v0), applyH(H, u1, v0), applyH(H, u1, v1), applyH(H, u0, v1)], u0, u1, v0, v1 }
+}
+
+export const polyPath = (ctx: CanvasRenderingContext2D, poly: Pt[]) => {
+  ctx.beginPath()
+  poly.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)))
   ctx.closePath()
 }
