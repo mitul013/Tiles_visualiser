@@ -35,6 +35,8 @@ export interface PhotoRoom {
   objMask?: string
   /** cut-out overlays (matt / glossy): transparent where tiles go, shadows baked in */
   layers?: import('./lib/roomLayers').RoomLayers
+  /** surfaces and object layer came from automatic room detection */
+  auto?: boolean
   createdAt: number
 }
 

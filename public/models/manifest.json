@@ -1,0 +1,21 @@
+{
+ "version": "33c4f73df0b0",
+ "models": {
+  "seg": {
+   "parts": [
+    "room-seg.onnx.part0",
+    "room-seg.onnx.part1",
+    "room-seg.onnx.part2",
+    "room-seg.onnx.part3"
+   ],
+   "bytes": 59871050
+  },
+  "depth": {
+   "parts": [
+    "room-depth.onnx.part0",
+    "room-depth.onnx.part1"
+   ],
+   "bytes": 27259378
+  }
+ }
+}

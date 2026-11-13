@@ -5,7 +5,7 @@ backsplash, and apply tiles or paint. Change layout, rotation, grout and finish,
 save, share and collect designs into catalogs you can download as a PDF.
 
 Built with **React 19 + TypeScript + Vite**, **three.js / @react-three/fiber** for the 3D rooms,
-**zustand** (persisted to IndexedDB), **jsPDF** and **qrcode**. Everything runs client-side with no backend.
+**zustand** (persisted to IndexedDB), **jsPDF** and **qrcode**. Everything runs client-side with no backend (room detection can optionally run on your own server).
 
 The feature set was mapped from the public tilesview.ai visualiser with the
 [REA skill](https://github.com/morluto/rea) (see [`docs/REA-ANALYSIS.md`](docs/REA-ANALYSIS.md)).
@@ -16,7 +16,11 @@ The feature set was mapped from the public tilesview.ai visualiser with the
 - **Room selection**: 6 demo 3D rooms (living, bedroom, kitchen, bathroom, patio, lobby) with category filter
 - **Photo rooms use the reference's layered model**: original → tiles → matt/glossy light map (multiply) → highlights
   (screen) → cut-out on top. Every layer can be uploaded (prepared cut-out + light maps) or is generated.
-- **Upload your own room**: mark each surface by dragging 4 corners, then roughly paint the **objects in
+- **Automatic room detection**: upload a photo and the floor, each wall (split at the room's corners), the
+  ceiling and every object in front of them are found for you, with the perspective fitted per surface.
+  Two open models (MIT / Apache-2.0) run in the browser or on your own server: no paid service.
+  See [`docs/ROOM-DETECTION.md`](docs/ROOM-DETECTION.md)
+- **Or mark it by hand**: mark each surface by dragging 4 corners, then roughly paint the **objects in
   front** (sofa, plants, taps): the outline is detected automatically and those objects stay on top,
   untouched. Tiles are perspective-mapped with the photo's own light and shadows and soft edges
 - **360° panorama** inside any demo room. Orbit and zoom in normal mode
@@ -83,6 +87,10 @@ src/
   data/        products, paints, rooms (surface geometry + defaults)
   lib/         tileArt (procedural tiles), layout (pattern renderer), homography (photo rooms),
                calc, pdf, share
+  lib/detect/  automatic room detection: core (pipeline), geometry, imageops, worker, index
+server/        optional detection backend (same pipeline in Node)
+scripts/detect/  CLI, browser end-to-end test, model export + packing
+public/models/ the two detection networks, split into parts
   components/  Visualizer, Scene3D, Furniture, PhotoScene, ProductPanel, SettingsPanel,
                RoomSelect, UploadRoom, Modals, ui
   store.ts     app state (zustand + IndexedDB persistence)
@@ -92,5 +100,5 @@ src/
 ## Notes / limitations
 
 - Uploaded rooms and products are stored only in your browser (IndexedDB). Shared links to them won't open elsewhere.
-- Photo rooms use manual 4-corner surface marking. Object outlines come from colour segmentation of a rough brush, not an AI model.
+- Automatic detection is tuned for real room photos. Flat cartoon-style renders, mirrors and glass partitions can be misread; the Surfaces editor (areas, perspective guide, object brush) corrects any room by hand.
 - Prices, SKUs and products are demo data.

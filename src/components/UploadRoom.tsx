@@ -5,6 +5,7 @@ import { Icon, Modal, toast } from './ui'
 import { refineMaskCanvas } from '../lib/objectMask'
 import { generateLayers, type RoomLayers } from '../lib/roomLayers'
 import { detectSurfaces } from '../lib/detectSurfaces'
+import { detectRoomPhoto } from '../lib/detect'
 import { applyH, extendQuad, squareToQuad, type Pt } from '../lib/homography'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
@@ -127,8 +128,19 @@ export default function UploadRoomModal() {
     const im = await readFile(f)
     setStart((cur) => ({ ...cur, [kind]: im.src }))
   }
-  /** continue from the first screen: with cut-outs, surfaces are detected automatically */
-  const begin = async () => {
+  /** automatic detection in progress (stage text + 0..1) */
+  const [detecting, setDetecting] = useState<{ stage: string; fraction: number } | null>(null)
+  /** object layer of a room just detected automatically (shown in the editor for finishing touches) */
+  const [detected, setDetected] = useState<string | null>(null)
+  /** tile over rugs instead of keeping them on top of the new floor */
+  const [overRugs, setOverRugs] = useState(false)
+  /**
+   * Continue from the first screen.
+   * auto = find floor, walls, ceiling and every object in front of them with the room-detection
+   * models and open the visualiser straight away; otherwise mark surfaces by hand (or, with
+   * prepared cut-outs, read the surfaces from their transparency).
+   */
+  const begin = async (auto = false) => {
     // the original is optional with a prepared cut-out: the cut-out flattened on white stands in
     let photoSrc = start.photo
     if (!photoSrc && start.matt) {
@@ -155,7 +167,36 @@ export default function UploadRoomModal() {
     c.width = W
     c.height = H
     c.getContext('2d')!.drawImage(im, 0, 0, W, H)
-    setImg({ src: c.toDataURL('image/jpeg', 0.9), w: W, h: H })
+    const src = c.toDataURL('image/jpeg', 0.9)
+    if (auto && !start.matt) {
+      setDetecting({ stage: 'Starting', fraction: 0 })
+      try {
+        const det = await detectRoomPhoto(c, (stage, fraction) => setDetecting({ stage, fraction }), { tileOverRugs: overRugs })
+        if (!det.surfaces.length) throw new Error('No floor or wall was found in this photo')
+        const surfs: PhotoSurface[] = det.surfaces.map((f) => ({ id: `s-${uid()}`, type: f.type, label: f.label, quad: f.quad, area: f.area, size: f.size }))
+        // open the editor with everything filled in: the user checks it, gives it finishing
+        // touches if needed (areas, perspective guide, object brush) and presses "Use this room"
+        setImg({ src, w: W, h: H })
+        setSurfaces(surfs)
+        setActive((surfs.find((x) => x.type === 'floor') ?? surfs[0]).id)
+        setPrepared(null)
+        setCutout({})
+        setMode('surfaces')
+        // strokes add to / erase from the detected object layer exactly as painted
+        setSnap(false)
+        setDetected(det.objMask)
+        const walls = surfs.filter((x) => x.type === 'wall').length
+        const parts = [surfs.some((x) => x.type === 'floor') && 'floor', walls && `${walls} wall${walls > 1 ? 's' : ''}`, surfs.some((x) => x.type === 'ceiling') && 'ceiling'].filter(Boolean)
+        toast(`Detected: ${parts.join(', ')} and the objects in front. Check it, then press Use this room.`)
+        return
+      } catch (e) {
+        // fall through to marking by hand, with the photo already loaded
+        toast(`Automatic detection failed (${e instanceof Error ? e.message : 'unknown error'}). Mark the surfaces by hand.`)
+      } finally {
+        setDetecting(null)
+      }
+    }
+    setImg({ src, w: W, h: H })
     if (!start.matt) {
       const copy = (t: 'floor' | 'wall') => ({ id: `s-${uid()}`, type: t, label: PRESET[t].label, quad: PRESET[t].quad.map((p) => [...p] as [number, number]), area: PRESET[t].area.map((p) => [...p] as [number, number]), size: [...PRESET[t].size] as [number, number] })
       const fl = copy('floor')
@@ -206,6 +247,9 @@ export default function UploadRoomModal() {
     setActive(surfs.find((x) => sel.includes(x.id))?.id ?? surfs[0]?.id ?? null)
     // a prepared cut-out already decides objects + lighting: hide the object / layer steps
     setPrepared(editing.layers && editing.layers.source !== 'generated' ? { glossy: editing.layers.cutoutGlossy } : null)
+    // detected rooms already have a precise object layer: strokes add to / erase from it as painted
+    // (colour snapping would re-segment the whole layer and lose objects coloured like the wall)
+    if (editing.auto) setSnap(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingId])
   const svgRef = useRef<SVGSVGElement>(null)
@@ -355,7 +399,8 @@ export default function UploadRoomModal() {
   }
 
   useEffect(() => {
-    if (!editing?.objMask || !img) return
+    const mask = editing?.objMask ?? detected
+    if (!mask || !img) return
     const im = new Image()
     im.onload = () => {
       const cv = maskRef.current
@@ -367,9 +412,9 @@ export default function UploadRoomModal() {
       r.getContext('2d')!.drawImage(im, 0, 0, cv.width, cv.height)
       setHasMask(true)
     }
-    im.src = editing.objMask
+    im.src = mask
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing?.id, img?.src])
+  }, [editing?.id, img?.src, detected])
 
   /** Save edits to an existing room in place; applied tiles stay on surfaces that still exist. */
   const saveEdit = async () => {
@@ -425,7 +470,7 @@ export default function UploadRoomModal() {
       const all = LAYER_KEYS.every((k) => cutout[k])
       layers = { ...gen, ...cutout, cutoutGlossy: prepared?.glossy, source: all ? 'uploaded' : 'mixed' }
     }
-    addRoom({ id, name, image: img.src, width: img.w, height: img.h, surfaces, objMask, layers, createdAt: Date.now() })
+    addRoom({ id, name, image: img.src, width: img.w, height: img.h, surfaces, objMask, layers, auto: detected ? true : undefined, createdAt: Date.now() })
     openRoom(id, {})
     useStore.getState().select(surfaces.filter((s) => s.type === 'floor').map((s) => s.id).slice(0, 1))
     close()
@@ -457,6 +502,9 @@ export default function UploadRoomModal() {
                   setImg(null)
                   setPrepared(null)
                   setCutout({})
+                  setDetected(null)
+                  setHasMask(false)
+                  roughRef.current = null
                 }}
               >
                 Change image
@@ -516,9 +564,37 @@ export default function UploadRoomModal() {
                 <input type="file" accept="image/png,image/webp" hidden onChange={(e) => pickStart(k, e.target.files?.[0])} />
               </label>
             ))}
-            <button className="btn primary block" disabled={!start.photo && !start.matt} onClick={() => void begin()}>
-              {start.matt ? 'Detect surfaces & continue' : 'Continue: mark surfaces'}
-            </button>
+            {start.matt ? (
+              <button className="btn primary block" disabled={!start.photo && !start.matt} onClick={() => void begin()}>
+                Detect surfaces & continue
+              </button>
+            ) : (
+              <>
+                <button className="btn primary block" disabled={!start.photo || !!detecting} onClick={() => void begin(true)}>
+                  <Icon name="layers" size={15} /> {detecting ? 'Detecting…' : 'Detect room automatically'}
+                </button>
+                {detecting ? (
+                  <div className="detect-progress" role="status" aria-live="polite">
+                    <div className="bar">
+                      <i style={{ width: `${Math.round(detecting.fraction * 100)}%` }} />
+                    </div>
+                    <span className="hint">{detecting.stage}</span>
+                  </div>
+                ) : (
+                  <>
+                    <p className="hint">
+                      Finds the <b>floor, walls and ceiling</b>, splits walls at the room's corners, fits the perspective and keeps <b>furniture, plants, curtains and decor</b> on top. You can check and adjust the result before using the room.
+                    </p>
+                    <label className="check">
+                      <input type="checkbox" checked={overRugs} onChange={(e) => setOverRugs(e.target.checked)} /> Tile over rugs (otherwise rugs stay on the new floor)
+                    </label>
+                    <button className="btn block" disabled={!start.photo} onClick={() => void begin()}>
+                      Mark surfaces by hand instead
+                    </button>
+                  </>
+                )}
+              </>
+            )}
           </div>
         </div>
       ) : (
@@ -748,7 +824,9 @@ export default function UploadRoomModal() {
                 : 'Place the 4 white handles on any rectangle lying on this surface, e.g. along plank or tile joints, until the grid lines follow the photo. It does not need to cover the whole floor: the plane is extended automatically. Width/depth below = that rectangle\'s real size.'}
             </p>
             <p className="hint">
-              {prepared
+              {detected
+                ? 'Everything here was detected automatically: each coloured area is a surface, pink is the object layer that stays on top. Adjust an area or its perspective guide here, fix objects in step 2 (paint to keep something on top, erase to tile over it), then press Use this room.'
+                : prepared
                 ? 'Surfaces were detected from your cut-out: the tile area and objects come from the cut-out itself. Check the perspective guide follows the floor lines and set its real size for correct tile scale.'
                 : 'Each surface has an area and a perspective guide. Floors that run out of the frame are fine: outline the visible part; the plane extends under it.'}
             </p>

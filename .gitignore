@@ -25,3 +25,7 @@ dist-ssr
 
 # local comparison fixtures & reports (third-party reference images are never committed)
 test-fixtures/
+
+# room detection: local outputs and model export work folder
+detect-out/
+model-export/

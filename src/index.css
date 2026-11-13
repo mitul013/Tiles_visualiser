@@ -1640,7 +1640,9 @@ input[type='range'] {
 }
 .room-editor {
   display: grid;
-  grid-template-columns: 1fr 300px;
+  /* minmax(0, …) + start: a tall side panel must not stretch the photo past the dialog */
+  grid-template-columns: minmax(0, 1fr) 300px;
+  align-items: start;
   gap: 18px;
 }
 .editor-stage {
@@ -1988,4 +1990,24 @@ input[type='range'] {
 }
 .lib-card .rc-cat {
   color: var(--text);
+}
+
+/* automatic room detection progress */
+.detect-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.detect-progress .bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--chip);
+  overflow: hidden;
+}
+.detect-progress .bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.25s ease;
 }
