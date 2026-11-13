@@ -127,24 +127,80 @@ the weights themselves are MIT-licensed. Have this checked if your legal team re
 once (128 MB) and are cached. Measured in headless Chromium on a 4-core cloud machine (WebAssembly,
 one thread): about 50 s per photo, of which the size network takes about 24 s. Expect phones to be slower.
 
-**On your own server (recommended for production).** The same pipeline in Node, and nothing for
-visitors to download. Measured on the same 4-core machine: about 9 s per photo at browser settings,
-13 to 16 s with the finer server defaults below:
+**On your own server (recommended).** The same pipeline in Node with a larger segmentation network
+(UperNet + Swin-L, MIT, 285 MB, server only). Visitors download nothing, and the result is better on
+hard rooms: on a dark tiled shower wall the browser model keeps large parts of the wall as "object",
+the server model tiles all of it. If the server is unreachable, busy or fails, the web app detects
+in the browser by itself, so a room can always be detected.
+
+| Measured (sample room) | Browser | Server, 4 cores | Server, 2 cores (Docker, free-tier size) |
+|---|---|---|---|
+| Time per photo | about 50 s + 128 MB first download | about 17 s | about 26 s at 960 px (34 to 42 s at 1280 px) |
+| Segmentation | standard, 768 px | large, 1280 px | large, 960 px (default on 2 cores) |
+| Thin objects (lamp stems, chair legs) | missed | kept | kept |
+| Peak memory | in the browser | 3.4 GB | 2.4 GB measured in the container |
+| Same photo again | full run | answered from cache (under 1 s) | same |
+
+### Run it
 
 ```bash
-npm run detect:server                     # http://localhost:8787, POST /detect
+npm run detect:server                      # needs server/models/room-seg-large.onnx (below)
 VITE_DETECT_API=https://your-host npm run build
 ```
 
+`server/models/room-seg-large.onnx` is not in git (285 MB). Build it once from its public checkpoint
+(`pip install torch transformers onnx onnxruntime`):
+
+```bash
+python scripts/detect/export_models.py model-export --server
+mkdir -p server/models
+cp model-export/room-seg-large.onnx server/models/
+```
+
+Without it the server uses the browser's standard model.
+
+### Docker (any host)
+
+```bash
+docker build -t room-detect .
+docker run -p 7860:7860 -e DETECT_ORIGIN=https://your-shop.example room-detect
+```
+
+The image exports the large model itself when `server/models/` is empty, so a plain checkout builds.
+Tested here: built, then run with `--cpus 2 --memory 6g`.
+
+### Free hosting: Hugging Face Spaces
+
+A free CPU Space (2 vCPU, 16 GB RAM) runs this image unchanged; no paid service is involved.
+
+1. On huggingface.co create a Space, SDK **Docker**, hardware **CPU basic (free)**.
+2. Push this repository to the Space's git remote, with this front matter at the top of its
+   `README.md`:
+   ```yaml
+   ---
+   title: Room detection
+   sdk: docker
+   app_port: 7860
+   ---
+   ```
+3. In the Space's settings add the variable `DETECT_ORIGIN` = your shop's URL.
+4. Build the web app with `VITE_DETECT_API=https://<user>-<space>.hf.space`.
+
+A free Space sleeps after a period without visits and takes about a minute to wake; during that
+minute the web app simply detects in the browser.
+
 | Variable | Default | Meaning |
 |---|---|---|
-| `PORT` | 8787 | port of the service |
+| `PORT` | 8787 (7860 in Docker) | port of the service |
 | `DETECT_ORIGIN` | `*` | allowed web origin (CORS) |
-| `DETECT_THREADS` | 4 | CPU threads per photo |
-| `DETECT_SEG` | 960 | segmentation resolution (browser uses 768) |
-| `DETECT_DETAIL` | 1218 | resolution of the thin-object pass (0 = off, as in the browser) |
-| `VITE_DETECT_API` | unset | build-time: URL of the service; unset = detect in the browser |
-| `VITE_MODEL_BASE` | `models/` | build-time: where the browser loads the models from |
+| `DETECT_THREADS` | number of CPUs | threads per photo |
+| `DETECT_SEG` | 1280 with 4+ threads, else 960 | segmentation input size |
+| `DETECT_DETAIL` | 1218 | thin-object pass (0 = off) |
+| `DETECT_MAX_QUEUE` | 6 | photos waiting before the server answers "busy" (the browser then takes over) |
+| `DETECT_SEG_MODEL` | `server/models/room-seg-large.onnx` | large segmentation model |
+| `DETECT_LEAN` | 1 | release memory between runs (0 = keep it pooled: a little faster, ~2 GB more) |
+| `VITE_DETECT_API` | unset | build-time: URL of the service; unset = detect in the browser only |
+| `VITE_MODEL_BASE` | `models/` | build-time: where the browser loads its models from |
 
 ## Testing
 

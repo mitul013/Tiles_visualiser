@@ -1,17 +1,25 @@
-/** Load the detection networks in Node (onnxruntime-node) from public/models (or any folder with manifest.json). */
+/**
+ * Load the detection networks in Node (onnxruntime-node) from public/models (or any folder with
+ * manifest.json). `segModel` swaps in a larger segmentation network (server only, see
+ * scripts/detect/export_models.py --server); it reads the same input and gives the same 150 classes.
+ */
 import fs from 'node:fs'
 import path from 'node:path'
 import * as ort from 'onnxruntime-node'
 import type { Models } from '../../src/lib/detect/core'
 
-export async function loadModels(dir: string, threads = 4): Promise<Models> {
+export async function loadModels(dir: string, threads = 4, segModel?: string): Promise<Models> {
+  // memory: without these the runtime keeps every run's peak allocation reserved per model
+  // (5+ GB with the large model); with them a server needs about half (see docs/ROOM-DETECTION.md)
+  const lean = process.env.DETECT_LEAN !== '0'
+  const opts: ort.InferenceSession.SessionOptions = { intraOpNumThreads: threads, ...(lean && { enableCpuMemArena: false, enableMemPattern: false }) }
   const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')) as { models: Record<string, { parts: string[]; bytes: number }> }
   const open = (key: string) => {
     const buf = Buffer.concat(manifest.models[key].parts.map((p) => fs.readFileSync(path.join(dir, p))))
     if (buf.length !== manifest.models[key].bytes) throw new Error(`model "${key}" is incomplete in ${dir}`)
-    return ort.InferenceSession.create(buf, { intraOpNumThreads: threads })
+    return ort.InferenceSession.create(buf, opts)
   }
-  const seg = await open('seg')
+  const seg = segModel ? await ort.InferenceSession.create(segModel, opts) : await open('seg')
   const dep = await open('depth')
   const sc = manifest.models.scale ? await open('scale') : null
   return {

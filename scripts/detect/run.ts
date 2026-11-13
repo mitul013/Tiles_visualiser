@@ -1,6 +1,6 @@
 /**
  * Node harness for the room detector (same core as the browser):
- *   npm run detect -- <photo> [--out dir] [--models dir] [--rugs] [--seg 960] [--ref-obj mask] [--ref-ids mask]
+ *   npm run detect -- <photo> [--out dir] [--models dir] [--seg-model large.onnx] [--rugs] [--seg 960] [--detail 1218] [--threads 4] [--ref-obj mask] [--ref-ids mask]
  * Writes overlay.jpg (surfaces, corners, perspective grids), objects.png, cutout.png and result.json.
  */
 import fs from 'node:fs'
@@ -30,7 +30,7 @@ async function main() {
   const W = Math.round(meta.width! * k)
   const H = Math.round(meta.height! * k)
   const rgba = await src.resize(W, H, { fit: 'fill' }).ensureAlpha().raw().toBuffer()
-  const models = await loadModels(modelDir)
+  const models = await loadModels(modelDir, Number(flag('--threads', '4')), flag('--seg-model'))
   const t = Date.now()
   const res = await detectRoom({ data: new Uint8Array(rgba.buffer, rgba.byteOffset, rgba.length), width: W, height: H }, models, {
     tileOverRugs: args.includes('--rugs'),

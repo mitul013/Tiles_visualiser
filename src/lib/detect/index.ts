@@ -1,9 +1,10 @@
 /**
  * Automatic room detection for uploaded photos (browser entry point).
  *
- * By default everything runs in the visitor's browser (no server, photos never leave the device).
- * Set VITE_DETECT_API to the URL of the bundled Node service (server/detect-server.ts) to run the
- * same pipeline on your own backend instead: faster on phones, and nothing to download.
+ * Set VITE_DETECT_API to the URL of the bundled service (server/detect-server.ts) to detect on your
+ * own backend: faster, nothing for visitors to download, and a larger model. If the service cannot
+ * be reached, is busy or fails, the same pipeline runs in the visitor's browser instead.
+ * Without VITE_DETECT_API everything runs in the browser (photos never leave the device).
  */
 import type { DetectedSurface, DetectResult } from './core'
 import type { DetectReply, DetectRequest } from './worker'
@@ -61,12 +62,34 @@ function maskToDataUrl(alpha: Uint8Array, W: number, H: number): string {
  * @param photo canvas holding the photo at the size the room will be stored at
  */
 export async function detectRoomPhoto(photo: HTMLCanvasElement, onProgress: (stage: string, fraction: number) => void, options: { tileOverRugs?: boolean } = {}): Promise<RoomDetection> {
+  if (API) {
+    try {
+      return await detectOnServer(photo, onProgress, options)
+    } catch (e) {
+      // unreachable, busy or failed: do it in the browser (slower, same result)
+      console.warn('room detection service unavailable, detecting in the browser:', e)
+      onProgress('Detecting on this device', 0.02)
+    }
+  }
+  return detectInBrowser(photo, onProgress, options)
+}
+
+async function detectOnServer(photo: HTMLCanvasElement, onProgress: (stage: string, fraction: number) => void, options: { tileOverRugs?: boolean }): Promise<RoomDetection> {
   const W = photo.width
   const H = photo.height
-  if (API) {
-    onProgress('Analysing the room', 0.2)
+  // the server sends no progress: show its stages on a timer (typical times on a 2-4 core server)
+  const stages: [number, string, number][] = [[0, 'Uploading the photo', 0.05], [2, 'Recognising walls, floor and furniture', 0.2], [9, 'Measuring the room in 3D', 0.55], [13, 'Measuring the room size', 0.7], [18, 'Cutting out furniture and objects', 0.85]]
+  const t0 = Date.now()
+  const timer = setInterval(() => {
+    const s = (Date.now() - t0) / 1000
+    const cur = [...stages].reverse().find(([at]) => s >= at)!
+    onProgress(cur[1], cur[2])
+  }, 500)
+  try {
     const blob = await new Promise<Blob>((res, rej) => photo.toBlob((b) => (b ? res(b) : rej(new Error('Could not read the photo'))), 'image/jpeg', 0.92))
-    const r = await fetch(`${API.replace(/\/$/, '')}/detect${options.tileOverRugs ? '?rugs=1' : ''}`, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob })
+    const ctl = new AbortController()
+    const kill = setTimeout(() => ctl.abort(), 120_000)
+    const r = await fetch(`${API!.replace(/\/$/, '')}/detect${options.tileOverRugs ? '?rugs=1' : ''}`, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob, signal: ctl.signal }).finally(() => clearTimeout(kill))
     if (!r.ok) throw new Error(`Room detection service answered ${r.status}`)
     const j = (await r.json()) as { width: number; height: number; surfaces: DetectedSurface[]; objMask: string; camera: DetectResult['camera']; classes?: ObjClasses }
     // the service returns the mask as a greyscale PNG; convert it to the editor's alpha mask
@@ -83,7 +106,14 @@ export async function detectRoomPhoto(photo: HTMLCanvasElement, onProgress: (sta
     for (let i = 0; i < W * H; i++) alpha[i] = d[i * 4]
     onProgress('Done', 1)
     return { width: W, height: H, surfaces: j.surfaces, objMask: maskToDataUrl(alpha, W, H), camera: j.camera, classes: j.classes }
+  } finally {
+    clearInterval(timer)
   }
+}
+
+function detectInBrowser(photo: HTMLCanvasElement, onProgress: (stage: string, fraction: number) => void, options: { tileOverRugs?: boolean }): Promise<RoomDetection> {
+  const W = photo.width
+  const H = photo.height
   const rgba = photo.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, W, H).data
   worker ??= new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
   const w = worker

@@ -2,8 +2,9 @@
 Rebuild the two room-detection networks in public/models from their public checkpoints.
 
     pip install torch transformers onnx onnxruntime
-    python scripts/detect/export_models.py [work_dir]
-    node scripts/detect/pack-models.cjs work_dir/room-seg.onnx work_dir/room-depth.onnx
+    python scripts/detect/export_models.py [work_dir]            # the browser models (public/models)
+    node scripts/detect/pack-models.cjs work_dir/room-seg.onnx work_dir/room-depth.onnx work_dir/room-scale.onnx
+    python scripts/detect/export_models.py [work_dir] --server   # server only: room-seg-large.onnx
 
 Models (all free for commercial use):
   * segmentation  openmmlab/upernet-convnext-tiny            MIT        ADE20K, 150 classes
@@ -20,9 +21,12 @@ from torch import nn
 from transformers import AutoModelForDepthEstimation, UperNetForSemanticSegmentation
 
 warnings.filterwarnings('ignore')
-out = sys.argv[1] if len(sys.argv) > 1 else 'model-export'
+SERVER = '--server' in sys.argv
+args = [a for a in sys.argv[1:] if not a.startswith('--')]
+out = args[0] if args else 'model-export'
 os.makedirs(out, exist_ok=True)
-SEG = os.environ.get('SEG_CHECKPOINT', 'openmmlab/upernet-convnext-tiny')
+# server: UperNet + Swin-L (MIT), clearly better on dark / patterned tiled walls, too big for phones
+SEG = os.environ.get('SEG_CHECKPOINT', 'openmmlab/upernet-swin-large' if SERVER else 'openmmlab/upernet-convnext-tiny')
 DEP = os.environ.get('DEPTH_CHECKPOINT', 'depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf')
 
 
@@ -79,16 +83,18 @@ for _, blk in seg.decode_head.psp_modules.named_children():
     setattr(blk, '0', GridPool(k))
     if hasattr(blk, 'layers'):
         blk.layers[0] = GridPool(k)
-dep = AutoModelForDepthEstimation.from_pretrained(DEP).eval()
-dep.head.forward = types.MethodType(head_forward, dep.head)
+if not SERVER:
+    dep = AutoModelForDepthEstimation.from_pretrained(DEP).eval()
+    dep.head.forward = types.MethodType(head_forward, dep.head)
 
 import onnxruntime as ort
 from onnxruntime.quantization import QuantType, quantize_dynamic
 
-for name, mod, shape, outname, dyn, checks in [
+jobs = [('room-seg-large', Seg(seg), (1, 3, 704, 1280), 'logits', {2: 'h', 3: 'w'}, [(704, 1280), (1280, 704), (544, 960)])] if SERVER else [
     ('room-seg', Seg(seg), (1, 3, 448, 768), 'logits', {2: 'h', 3: 'w'}, [(448, 768), (576, 960), (768, 448)]),
     ('room-depth', Depth(dep), (1, 3, 434, 770), 'predicted_depth', {1: 'h', 2: 'w'}, [(434, 770), (770, 434)]),
-]:
+]
+for name, mod, shape, outname, dyn, checks in jobs:
     fp32 = os.path.join(out, f'{name}.fp32.onnx')
     torch.onnx.export(mod, (torch.randn(*shape),), fp32, input_names=['pixel_values'], output_names=[outname], dynamic_axes={'pixel_values': {2: 'height', 3: 'width'}, outname: dyn}, opset_version=17, dynamo=False)
     s = ort.InferenceSession(fp32, providers=['CPUExecutionProvider'])
@@ -101,6 +107,11 @@ for name, mod, shape, outname, dyn, checks in [
         assert diff < 1e-2, 'export does not match PyTorch'
     quantize_dynamic(fp32, os.path.join(out, f'{name}.onnx'), weight_type=QuantType.QUInt8)
     print(f'{name}: {os.path.getsize(os.path.join(out, name + ".onnx")) / 1e6:.1f} MB')
+    os.remove(fp32)
+
+if SERVER:
+    print('then copy', os.path.join(out, 'room-seg-large.onnx'), 'to server/models/')
+    sys.exit(0)
 
 # absolute-scale network: already published as ONNX, only quantised here
 from huggingface_hub import hf_hub_download

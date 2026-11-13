@@ -29,3 +29,6 @@ test-fixtures/
 # room detection: local outputs and model export work folder
 detect-out/
 model-export/
+
+# server-only large model (built by scripts/detect/export_models.py --server)
+server/models/
