@@ -23,7 +23,7 @@ export type DetectReply =
 
 interface Manifest {
   version: string
-  models: Record<'seg' | 'depth', { parts: string[]; bytes: number }>
+  models: Record<'seg' | 'depth', { parts: string[]; bytes: number }> & { scale?: { parts: string[]; bytes: number } }
 }
 
 ort.env.wasm.wasmPaths = { wasm: new URL(wasmUrl, self.location.href).href }
@@ -33,8 +33,8 @@ ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, Math.max(1, (na
 const CACHE = 'room-detect-models'
 
 /** Download a model (split in parts so every file stays under static hosts' size limits). */
-async function fetchModel(base: string, m: Manifest, key: 'seg' | 'depth', onBytes: (n: number) => void): Promise<Uint8Array> {
-  const info = m.models[key]
+async function fetchModel(base: string, m: Manifest, key: 'seg' | 'depth' | 'scale', onBytes: (n: number) => void): Promise<Uint8Array> {
+  const info = m.models[key]!
   const out = new Uint8Array(info.bytes)
   let cache: Cache | null = null
   try {
@@ -81,7 +81,7 @@ async function run(req: DetectRequest, post: (r: DetectReply) => void) {
     manifestCache = { base: req.modelBase, m: (await r.json()) as Manifest }
   }
   const m = manifestCache.m
-  const total = m.models.seg.bytes + m.models.depth.bytes
+  const total = m.models.seg.bytes + m.models.depth.bytes + (m.models.scale?.bytes ?? 0)
   let got = 0
   const onBytes = (n: number) => {
     got += n
@@ -101,17 +101,28 @@ async function run(req: DetectRequest, post: (r: DetectReply) => void) {
     },
     async depth(input, w, h) {
       const s = await ort.InferenceSession.create(await fetchModel(req.modelBase, m, 'depth', onBytes), opts)
-      progress('Measuring the room in 3D', 0.72)
+      progress('Measuring the room in 3D', 0.5)
       const o = await s.run({ pixel_values: new ort.Tensor('float32', input, [1, 3, h, w]) })
       const t = o.predicted_depth
       const out = { data: t.data as Float32Array, width: t.dims[2], height: t.dims[1] }
       await s.release()
       return out
     },
+    ...(m.models.scale && {
+      async scale(input: Float32Array, w: number, h: number) {
+        const s = await ort.InferenceSession.create(await fetchModel(req.modelBase, m, 'scale', onBytes), opts)
+        progress('Measuring the room size', 0.62)
+        const o = await s.run({ pixel_values: new ort.Tensor('float32', input, [1, 3, h, w]) }, ['predicted_depth'])
+        const t = o.predicted_depth
+        const out = { data: t.data as Float32Array, width: t.dims[2], height: t.dims[1] }
+        await s.release()
+        return out
+      },
+    }),
   }
   const res = await detectRoom({ data: new Uint8ClampedArray(req.rgba), width: req.width, height: req.height }, models, {
     ...req.options,
-    onProgress: (stage, f) => f > 0.75 && progress(stage, f),
+    onProgress: (stage, f) => f > 0.85 && progress(stage, f),
   })
   const { labels: _labels, ...result } = res
   void _labels

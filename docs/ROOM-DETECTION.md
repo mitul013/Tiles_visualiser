@@ -54,30 +54,31 @@ Reproduce: `npm run detect -- photo.webp --ref-obj object_msk.webp --ref-ids unq
 
 ## Real-world scale (how many tiles fit)
 
-A photo carries no absolute size, so the room's dimensions are estimated:
+**How the reference does it.** Nothing is hard-coded. For every uploaded photo its server returns,
+per surface, four image corners plus `width_m`, `height_m`, `avg_depth` and `tiles_x` / `tiles_y`
+(= size in metres / 0.6), and a camera field of view. The sizes come from a metric depth estimate of
+that photo: the test living room came out 2.77 m high, the test corridor 2.24 m. (Its catalogue
+rooms are hand-built 3D models instead: a camera plus one plane per surface.)
 
-1. depth gives every plane's distance from the camera;
-2. the floor and ceiling are made level (one shared vertical) and slid along it until they meet
-   each wall on the junction seen in the photo, across any skirting board or ceiling moulding;
-3. absolute size: with floor and ceiling both visible the room is taken to be **2.7 m** high;
-   otherwise the depth network's own metres are used (x 1.2, the bias measured on the rooms below),
-   kept within a plausible camera height.
+**How we do it, the same way.** Per photo:
 
-**How the reference does it.** For an uploaded photo its server returns, per surface, four image
-corners plus `width_m`, `height_m`, `avg_depth` and `tiles_x` / `tiles_y` (= size in metres / 0.6),
-and a camera field of view. Nothing is hard-coded: the sizes follow from a metric depth estimate
-(`pixel size x avg_depth / focal length` reproduces them to within a few percent). On the test
-upload it measured the room 2.77 m high. Its catalogue rooms are hand-built 3D models instead
-(camera plus one plane per surface); the one checked is 2.70 m high.
+1. the room's shape (planes, corners, camera) comes from the depth network, as before;
+2. floor and ceiling are made level and slid to meet the walls on the junctions seen in the photo;
+3. **absolute size** comes from a third network, Metric3D v2, which predicts real distances for a
+   camera of known focal length. The room is scaled by the median ratio between its distances and
+   our planes' over the visible surfaces, times a calibration of 0.85 (the reference's sizes run
+   15% smaller than metric depth implies, by the same amount on both uploads compared). Without
+   that network the old rule applies: 2.7 m ceiling, or the depth network's metres x 1.2.
 
-Our size of 1 m on screen, compared with the reference on the same photos:
+Size of 1 m on screen, ours vs the reference, on the same photos:
 
-| Room | Camera | Walls | Floor |
-|---|---|---|---|
-| Uploaded photo (`tv_room_v3`) | focal length within 1% | 5 to 13% larger | 0 to 11% |
-| Catalogue room 1710 | 48 deg vs 42 deg wide | 0 to 4%, up to 18% along the receding wall | 1 to 4% across, 8 to 19% in depth |
+| Room | Before (2.7 m ceiling rule) | Now (measured per photo) |
+|---|---|---|
+| Uploaded living room (`tv_room_v3`) | 1.06x | **1.00x** (walls 0.97 to 1.02, floor 0.91 to 0.99) |
+| Uploaded corridor (`tv_room_v3`) | 0.74x | **0.99x** (end wall 1.17, side walls 0.90 to 1.14) |
+| Catalogue room 1710 (hand-built model) | 1.0 to 1.2x | about 0.93x |
 
-The two photo rooms in the library take their surfaces from this detector.
+The same photo gives the same room in the browser and on the server (1.01x vs 1.00x above).
 
 ## How it works
 
@@ -110,7 +111,8 @@ arrays, shared by the browser worker and Node.
 | | Model | Licence | Download |
 |---|---|---|---|
 | Segmentation | `openmmlab/upernet-convnext-tiny` | MIT | 60 MB |
-| Depth | `depth-anything/Depth-Anything-V2-Metric-Indoor-Small` | Apache-2.0 | 27 MB |
+| Depth (room shape) | `depth-anything/Depth-Anything-V2-Metric-Indoor-Small` | Apache-2.0 | 27 MB |
+| Scale (room size) | Metric3D v2 small (`onnx-community/metric3d-vit-small`) | BSD-2-Clause (ONNX export CC0) | 41 MB |
 
 Both are open weights that run on a plain CPU: there is no paid API and no per-image cost. They are
 stored in `public/models/` as 8-bit ONNX files split into parts under 20 MB (so any static host
@@ -122,12 +124,12 @@ the weights themselves are MIT-licensed. Have this checked if your legal team re
 ## Where it runs
 
 **In the browser (default).** Nothing to host and photos never leave the device. The models download
-once (87 MB) and are cached. Measured in headless Chromium on a 4-core cloud machine (WebAssembly,
-one thread): 30 to 42 s per photo. Expect phones to be slower.
+once (128 MB) and are cached. Measured in headless Chromium on a 4-core cloud machine (WebAssembly,
+one thread): about 50 s per photo, of which the size network takes about 24 s. Expect phones to be slower.
 
 **On your own server (recommended for production).** The same pipeline in Node, and nothing for
-visitors to download. Measured on the same 4-core machine: about 5 s per photo at browser settings,
-9 to 12 s with the finer server defaults below:
+visitors to download. Measured on the same 4-core machine: about 9 s per photo at browser settings,
+13 to 16 s with the finer server defaults below:
 
 ```bash
 npm run detect:server                     # http://localhost:8787, POST /detect

@@ -13,7 +13,14 @@ export async function loadModels(dir: string, threads = 4): Promise<Models> {
   }
   const seg = await open('seg')
   const dep = await open('depth')
+  const sc = manifest.models.scale ? await open('scale') : null
   return {
+    ...(sc && {
+      async scale(input: Float32Array, w: number, h: number) {
+        const t = (await sc.run({ pixel_values: new ort.Tensor('float32', input, [1, 3, h, w]) }, ['predicted_depth'])).predicted_depth
+        return { data: t.data as Float32Array, width: t.dims[2], height: t.dims[1] }
+      },
+    }),
     async segment(input, w, h) {
       const t = (await seg.run({ pixel_values: new ort.Tensor('float32', input, [1, 3, h, w]) })).logits
       return { data: t.data as Float32Array, width: t.dims[3], height: t.dims[2] }

@@ -1,5 +1,5 @@
 {
- "version": "33c4f73df0b0",
+ "version": "947cd121335c",
  "models": {
   "seg": {
    "parts": [
@@ -16,6 +16,14 @@
     "room-depth.part1.bin"
    ],
    "bytes": 27259378
+  },
+  "scale": {
+   "parts": [
+    "room-scale.part0.bin",
+    "room-scale.part1.bin",
+    "room-scale.part2.bin"
+   ],
+   "bytes": 41349020
   }
  }
 }

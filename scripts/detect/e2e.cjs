@@ -51,6 +51,8 @@ const save = (url, f) => fs.writeFileSync(path.join(out, f), Buffer.from(url.spl
     return { id: r.id, surfaces: r.surfaces.map((x) => ({ id: x.id, type: x.type, label: x.label })), auto: r.auto }
   })
   console.log(JSON.stringify(info.surfaces.map((s) => s.label)))
+  // the detected room as stored (lets tests compare browser and server results)
+  fs.writeFileSync(path.join(out, 'room.json'), JSON.stringify(await page.evaluate(() => { const s = window.__tv.useStore.getState(); const r = s.photoRooms.find((x) => x.id === s.roomId); return { width: r.width, height: r.height, surfaces: r.surfaces } })))
   const ready = () => page.waitForSelector(`canvas[data-room="${info.id}"][data-ready="1"]`, { timeout: 120000 })
   const shot = async (f) => {
     await ready()

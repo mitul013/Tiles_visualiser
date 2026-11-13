@@ -5,9 +5,11 @@ Rebuild the two room-detection networks in public/models from their public check
     python scripts/detect/export_models.py [work_dir]
     node scripts/detect/pack-models.cjs work_dir/room-seg.onnx work_dir/room-depth.onnx
 
-Models (both free for commercial use):
+Models (all free for commercial use):
   * segmentation  openmmlab/upernet-convnext-tiny            MIT        ADE20K, 150 classes
   * depth         depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf   Apache-2.0   metric, metres
+  * scale         onnx-community/metric3d-vit-small (Metric3D v2, BSD-2-Clause; ONNX export CC0)
+                  absolute size of each room; downloaded as ONNX and quantised to 8 bit here
 
 Both are exported with a dynamic input size and their weights quantised to 8 bit (about 4x smaller,
 and faster on WebAssembly). Outputs are checked against PyTorch before quantisation.
@@ -99,3 +101,10 @@ for name, mod, shape, outname, dyn, checks in [
         assert diff < 1e-2, 'export does not match PyTorch'
     quantize_dynamic(fp32, os.path.join(out, f'{name}.onnx'), weight_type=QuantType.QUInt8)
     print(f'{name}: {os.path.getsize(os.path.join(out, name + ".onnx")) / 1e6:.1f} MB')
+
+# absolute-scale network: already published as ONNX, only quantised here
+from huggingface_hub import hf_hub_download
+m3d = hf_hub_download(os.environ.get('SCALE_REPO', 'onnx-community/metric3d-vit-small'), 'onnx/model.onnx')
+quantize_dynamic(m3d, os.path.join(out, 'room-scale.onnx'), weight_type=QuantType.QUInt8)
+print(f'room-scale: {os.path.getsize(os.path.join(out, "room-scale.onnx")) / 1e6:.1f} MB')
+print('then: node scripts/detect/pack-models.cjs', *(os.path.join(out, f'room-{k}.onnx') for k in ('seg', 'depth', 'scale')))

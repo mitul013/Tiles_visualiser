@@ -56,6 +56,12 @@ export interface Models {
   segment(input: Float32Array, width: number, height: number): Promise<Tensor>
   /** input: normalised CHW RGB at (width, height) → metric depth in metres [height, width] */
   depth(input: Float32Array, width: number, height: number): Promise<Tensor>
+  /**
+   * optional absolute-scale network (Metric3D v2): input normalised CHW RGB at
+   * (SCALE_W, SCALE_H), the photo letterboxed in the middle → depth in metres for a camera with a
+   * 1000 px focal length [height, width]. Gives each room its own real size, as the reference does.
+   */
+  scale?(input: Float32Array, width: number, height: number): Promise<Tensor>
 }
 export interface DetectOptions {
   /** long side fed to the segmentation network (default 768; 960 is a little more precise, slower) */
@@ -79,8 +85,16 @@ const C_WALL = 0
 const C_FLOOR = [3, 11, 52] // floor, sidewalk/pavement, path
 const C_CEILING = 5
 const C_RUG = 28
-/** the depth network's metres x this = real metres (calibrated on rooms with a known 2.7 m ceiling) */
+/** the depth network's metres x this = real metres (fallback when no scale network is available) */
 const DEPTH_BIAS = 1.2
+/** input size of the absolute-scale network (its training resolution; smaller loses accuracy) */
+/**
+ * The reference's room sizes run ~15% smaller than the metric network's distances imply, by the
+ * same amount on every room compared (two uploads: 0.85, 0.85). Applied so tile counts match it.
+ */
+const SCALE_CAL = 0.85
+export const SCALE_W = 1064
+export const SCALE_H = 616
 
 /** Network input size: photo aspect kept, long side ~`long`, both sides multiples of 32. */
 export function pickSegSize(W: number, H: number, long = 768): [number, number] {
@@ -682,6 +696,47 @@ export async function detectRoom(img: { data: Uint8ClampedArray | Uint8Array; wi
     else if (floorS) scale = Math.min(3, Math.max(0.35, Math.min(1.7, Math.max(1.0, floorS.d * DEPTH_BIAS)) / floorS.d))
     else if (ceilS) scale = Math.min(3, Math.max(0.35, Math.min(1.7, Math.max(0.9, ceilS.d * DEPTH_BIAS)) / ceilS.d))
     else scale = DEPTH_BIAS
+  }
+  // ── absolute size from a metric network, measured for this photo (as the reference does): the
+  // ratio between its distances and our planes' distances over the visible surfaces
+  if (models.scale && surfs.length) {
+    progress('Measuring the room size', 0.84)
+    const k = Math.min(SCALE_H / H, SCALE_W / W)
+    const w = Math.max(1, Math.round(W * k))
+    const h = Math.max(1, Math.round(H * k))
+    const x0 = Math.floor((SCALE_W - w) / 2)
+    const y0 = Math.floor((SCALE_H - h) / 2)
+    // letterbox: the padding is the mean colour, which is 0 after normalisation
+    const t = toTensor(img.data, W, H, w, h)
+    const input = new Float32Array(3 * SCALE_W * SCALE_H)
+    for (let c = 0; c < 3; c++)
+      for (let y = 0; y < h; y++) input.set(t.subarray(c * w * h + y * w, c * w * h + (y + 1) * w), c * SCALE_W * SCALE_H + (y0 + y) * SCALE_W + x0)
+    const out = await models.scale(input, SCALE_W, SCALE_H)
+    const sx = out.width / SCALE_W
+    const sy = out.height / SCALE_H
+    // canonical camera (1000 px focal) → this photo's camera
+    const toMetres = (f * k) / 1000
+    const ratios: number[] = []
+    const step = Math.max(2, Math.round(Math.max(W, H) / 240))
+    for (let y = step >> 1; y < H; y += step)
+      for (let x = step >> 1; x < W; x += step) {
+        const id = labels[y * W + x]
+        const sf = id === 1 ? floorS : id === 2 ? ceilS : id >= 3 ? wallS[id - 3] : undefined
+        if (!sf) continue
+        const inv = invDepth(sf, x + 0.5 - W / 2, y + 0.5 - H / 2)
+        if (!(inv > 1e-6)) continue
+        const ox = Math.min(out.width - 1, Math.floor((x0 + (x + 0.5) * k) * sx))
+        const oy = Math.min(out.height - 1, Math.floor((y0 + (y + 0.5) * k) * sy))
+        const z = out.data[oy * out.width + ox] * toMetres
+        if (z > 0.2 && z < 60) ratios.push(z * inv)
+      }
+    if (ratios.length > 50) {
+      let m = median(ratios) * SCALE_CAL
+      // keep the room plausible: 1.9 to 6 m from floor to ceiling
+      if (floorS && ceilS) m = Math.min(6 / (floorS.d + ceilS.d), Math.max(1.9 / (floorS.d + ceilS.d), m))
+      scale = Math.min(3, Math.max(0.35, m))
+    }
+    lap('scale')
   }
   lap('labels')
 

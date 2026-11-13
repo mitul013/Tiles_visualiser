@@ -1,15 +1,15 @@
 /**
  * Split the detection models into parts small enough for any static host (and for git), and write
  * public/models/manifest.json:
- *   node scripts/detect/pack-models.cjs <room-seg.onnx> <room-depth.onnx>
+ *   node scripts/detect/pack-models.cjs <room-seg.onnx> <room-depth.onnx> [room-scale.onnx]
  */
 const fs = require('node:fs')
 const path = require('node:path')
 const crypto = require('node:crypto')
 
-const [seg, depth] = process.argv.slice(2)
+const [seg, depth, scale] = process.argv.slice(2)
 if (!seg || !depth) {
-  console.error('usage: node scripts/detect/pack-models.cjs <room-seg.onnx> <room-depth.onnx>')
+  console.error('usage: node scripts/detect/pack-models.cjs <room-seg.onnx> <room-depth.onnx> [room-scale.onnx]')
   process.exit(1)
 }
 const out = path.join(__dirname, '..', '..', 'public', 'models')
@@ -18,7 +18,7 @@ for (const f of fs.readdirSync(out)) if (/\.part\d+(\.bin)?$|manifest\.json$/.te
 const PART = 19 * 1024 * 1024
 const hash = crypto.createHash('sha256')
 const models = {}
-for (const [key, file] of [['seg', seg], ['depth', depth]]) {
+for (const [key, file] of [['seg', seg], ['depth', depth], ...(scale ? [['scale', scale]] : [])]) {
   const buf = fs.readFileSync(file)
   hash.update(buf)
   const parts = []

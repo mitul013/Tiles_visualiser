@@ -18,7 +18,8 @@ The feature set was mapped from the public tilesview.ai visualiser with the
   (screen) → cut-out on top. Every layer can be uploaded (prepared cut-out + light maps) or is generated.
 - **Automatic room detection**: upload a photo and the floor, each wall (split at the room's corners), the
   ceiling and every object in front of them are found for you, with the perspective fitted per surface.
-  Two open models (MIT / Apache-2.0) run in the browser or on your own server: no paid service.
+  Three open models (MIT / Apache-2.0 / BSD) run in the browser or on your own server: no paid service.
+  Each room's real size is measured from the photo, so tile counts match the reference.
   See [`docs/ROOM-DETECTION.md`](docs/ROOM-DETECTION.md)
 - **Phones and tablets**, portrait and landscape: room on top with the catalogue below (side by side when a phone
   is turned), dialogs as full-screen sheets, menus as bottom sheets, touch-sized controls, pinch-to-zoom in the
