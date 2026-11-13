@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useStore, type PhotoSurface } from '../store'
 import type { SurfaceType } from '../types'
 import { Icon, Modal, toast } from './ui'
 import { refineMaskCanvas } from '../lib/objectMask'
 import { generateLayers, type RoomLayers } from '../lib/roomLayers'
 import { detectSurfaces } from '../lib/detectSurfaces'
+import { classesFromB64, detectRoomPhoto, type ObjClasses } from '../lib/detect'
 import { applyH, extendQuad, squareToQuad, type Pt } from '../lib/homography'
+import { enterLandscape, exitLandscape, useViewport } from '../lib/fullscreen'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
@@ -87,7 +89,9 @@ export default function UploadRoomModal() {
       x.fillRect(0, 0, 2, 2)
       return c.toDataURL('image/png')
     }
-    if (!st.photoRooms.some((x) => x.id === r.id))
+    // a copy saved earlier keeps its designs but takes the library's current surfaces (sizes get corrected)
+    if (st.photoRooms.some((x) => x.id === r.id)) st.updatePhotoRoom(r.id, { surfaces: r.surfaces })
+    else
       addRoom({
         id: r.id,
         name: r.name,
@@ -127,8 +131,21 @@ export default function UploadRoomModal() {
     const im = await readFile(f)
     setStart((cur) => ({ ...cur, [kind]: im.src }))
   }
-  /** continue from the first screen: with cut-outs, surfaces are detected automatically */
-  const begin = async () => {
+  /** automatic detection in progress (stage text + 0..1) */
+  const [detecting, setDetecting] = useState<{ stage: string; fraction: number } | null>(null)
+  /** object layer of a room just detected automatically (shown in the editor for finishing touches) */
+  const [detected, setDetected] = useState<string | null>(null)
+  /** prepared cut-outs are an advanced option: shown open on roomy screens, folded away on phones */
+  const [advOpen, setAdvOpen] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 901px) and (min-height: 601px)').matches)
+  /** tile over rugs instead of keeping them on top of the new floor */
+  const [overRugs, setOverRugs] = useState(false)
+  /**
+   * Continue from the first screen.
+   * auto = find floor, walls, ceiling and every object in front of them with the room-detection
+   * models and open the visualiser straight away; otherwise mark surfaces by hand (or, with
+   * prepared cut-outs, read the surfaces from their transparency).
+   */
+  const begin = async (auto = false) => {
     // the original is optional with a prepared cut-out: the cut-out flattened on white stands in
     let photoSrc = start.photo
     if (!photoSrc && start.matt) {
@@ -155,7 +172,37 @@ export default function UploadRoomModal() {
     c.width = W
     c.height = H
     c.getContext('2d')!.drawImage(im, 0, 0, W, H)
-    setImg({ src: c.toDataURL('image/jpeg', 0.9), w: W, h: H })
+    const src = c.toDataURL('image/jpeg', 0.9)
+    if (auto && !start.matt) {
+      setDetecting({ stage: 'Starting', fraction: 0 })
+      try {
+        const det = await detectRoomPhoto(c, (stage, fraction) => setDetecting({ stage, fraction }), { tileOverRugs: overRugs })
+        if (!det.surfaces.length) throw new Error('No floor or wall was found in this photo')
+        const surfs: PhotoSurface[] = det.surfaces.map((f) => ({ id: `s-${uid()}`, type: f.type, label: f.label, quad: f.quad, area: f.area, size: f.size }))
+        // open the editor with everything filled in: the user checks it, gives it finishing
+        // touches if needed (areas, perspective guide, object brush) and presses "Use this room"
+        setImg({ src, w: W, h: H })
+        setSurfaces(surfs)
+        setActive((surfs.find((x) => x.type === 'floor') ?? surfs[0]).id)
+        setPrepared(null)
+        setCutout({})
+        setMode('surfaces')
+        // strokes add to / erase from the detected object layer exactly as painted
+        setSnap(false)
+        setDetected(det.objMask)
+        setObjClasses(det.classes ?? null)
+        const walls = surfs.filter((x) => x.type === 'wall').length
+        const parts = [surfs.some((x) => x.type === 'floor') && 'floor', walls && `${walls} wall${walls > 1 ? 's' : ''}`, surfs.some((x) => x.type === 'ceiling') && 'ceiling'].filter(Boolean)
+        toast(`Detected: ${parts.join(', ')} and the objects in front. Check it, then press Use this room.`)
+        return
+      } catch (e) {
+        // fall through to marking by hand, with the photo already loaded
+        toast(`Automatic detection failed (${e instanceof Error ? e.message : 'unknown error'}). Mark the surfaces by hand.`)
+      } finally {
+        setDetecting(null)
+      }
+    }
+    setImg({ src, w: W, h: H })
     if (!start.matt) {
       const copy = (t: 'floor' | 'wall') => ({ id: `s-${uid()}`, type: t, label: PRESET[t].label, quad: PRESET[t].quad.map((p) => [...p] as [number, number]), area: PRESET[t].area.map((p) => [...p] as [number, number]), size: [...PRESET[t].size] as [number, number] })
       const fl = copy('floor')
@@ -206,13 +253,21 @@ export default function UploadRoomModal() {
     setActive(surfs.find((x) => sel.includes(x.id))?.id ?? surfs[0]?.id ?? null)
     // a prepared cut-out already decides objects + lighting: hide the object / layer steps
     setPrepared(editing.layers && editing.layers.source !== 'generated' ? { glossy: editing.layers.cutoutGlossy } : null)
+    // detected rooms already have a precise object layer: strokes add to / erase from it as painted
+    // (colour snapping would re-segment the whole layer and lose objects coloured like the wall)
+    if (editing.auto) setSnap(false)
+    setObjClasses(editing.objClasses ?? null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingId])
   const svgRef = useRef<SVGSVGElement>(null)
   const maskRef = useRef<HTMLCanvasElement>(null)
   const [mode, setMode] = useState<'surfaces' | 'objects' | 'cutout'>('surfaces')
   const [brush, setBrush] = useState(28)
-  const [erase, setErase] = useState(false)
+  /**
+   * object tools: paint = add to the object layer, erase = rub out only what the brush touches,
+   * remove = one tap removes that whole object, move = drag the zoomed photo around
+   */
+  const [objTool, setObjTool] = useState<'paint' | 'erase' | 'remove'>('paint')
   const [hasMask, setHasMask] = useState(false)
   const [snap, setSnap] = useState(true)
   /** optional uploaded cut-out overlays (transparent where tiles go) */
@@ -234,28 +289,87 @@ export default function UploadRoomModal() {
     reader.readAsDataURL(f)
   }
   const [busy, setBusy] = useState(false)
-  /** the user's rough strokes; the visible mask is these strokes snapped to object outlines */
-  const roughRef = useRef<HTMLCanvasElement | null>(null)
   const photoRef = useRef<HTMLImageElement | null>(null)
   const painting = useRef(false)
-  const rough = () => {
-    const cv = maskRef.current!
-    if (!roughRef.current || roughRef.current.width !== cv.width) {
-      roughRef.current = document.createElement('canvas')
-      roughRef.current.width = cv.width
-      roughRef.current.height = cv.height
+  /**
+   * The mask canvas is the single source of truth for the object layer. Every action changes only
+   * the pixels it touches: a paint stroke adds (optionally snapped to the object's outline), the
+   * eraser removes what it rubs, "remove object" clears one object. Nothing else is recomputed, so
+   * an edit can never wipe the rest of the selection.
+   */
+  /** the stroke being painted, kept apart so that only this stroke is snapped to object edges */
+  const strokeRef = useRef<HTMLCanvasElement | null>(null)
+  const undoRef = useRef<ImageData[]>([])
+  const [undoCount, setUndoCount] = useState(0)
+  const pushUndo = () => {
+    const cv = maskRef.current
+    if (!cv) return
+    undoRef.current.push(cv.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, cv.width, cv.height))
+    if (undoRef.current.length > 8) undoRef.current.shift()
+    setUndoCount(undoRef.current.length)
+  }
+  const refreshHasMask = () => {
+    const cv = maskRef.current
+    if (!cv) return
+    const d = cv.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, cv.width, cv.height).data
+    let any = false
+    for (let i = 3; i < d.length; i += 16) if (d[i] > 20) {
+      any = true
+      break
     }
-    return roughRef.current
+    setHasMask(any)
+  }
+  const undo = () => {
+    const cv = maskRef.current
+    const snapShot = undoRef.current.pop()
+    if (!cv || !snapShot) return
+    cv.getContext('2d')!.putImageData(snapShot, 0, 0)
+    setUndoCount(undoRef.current.length)
+    refreshHasMask()
+  }
+  /** detected class of every pixel (when the room was detected automatically) */
+  const [objClasses, setObjClasses] = useState<ObjClasses | null>(null)
+  /** Remove the whole object under a tap: the connected pink region of the same detected kind. */
+  const removeObjectAt = (x: number, y: number) => {
+    const cv = maskRef.current
+    if (!cv) return
+    const W = cv.width
+    const H = cv.height
+    const ctx = cv.getContext('2d', { willReadFrequently: true })!
+    const im = ctx.getImageData(0, 0, W, H)
+    const d = im.data
+    const px = Math.min(W - 1, Math.max(0, Math.round(x)))
+    const py = Math.min(H - 1, Math.max(0, Math.round(y)))
+    if (d[(py * W + px) * 4 + 3] <= 40) return toast('Tap on a pink object to remove it')
+    const cls = objClasses ? classesFromB64(objClasses) : null
+    const kind = (i: number) => (cls && objClasses ? cls[Math.min(objClasses.h - 1, Math.floor((((i / W) | 0) * objClasses.h) / H)) * objClasses.w + Math.min(objClasses.w - 1, Math.floor(((i % W) * objClasses.w) / W))] : 0)
+    const start = py * W + px
+    const want = kind(start)
+    pushUndo()
+    const seen = new Uint8Array(W * H)
+    const stack = [start]
+    seen[start] = 1
+    while (stack.length) {
+      const i = stack.pop()!
+      d[i * 4 + 3] = 0
+      const cx = i % W
+      for (const n of [cx > 0 ? i - 1 : -1, cx < W - 1 ? i + 1 : -1, i - W, i + W]) {
+        if (n < 0 || n >= W * H || seen[n]) continue
+        seen[n] = 1
+        // soft edge pixels belong to the object whatever their class; solid ones must be the same kind
+        const al = d[n * 4 + 3]
+        if (al > 40 && (al < 200 || kind(n) === want)) stack.push(n)
+      }
+    }
+    ctx.putImageData(im, 0, 0)
+    refreshHasMask()
   }
   const finishStroke = async () => {
     const cv = maskRef.current
+    const stroke = strokeRef.current
     if (!cv || !img) return
-    const ctx = cv.getContext('2d')!
-    if (!snap) {
-      ctx.clearRect(0, 0, cv.width, cv.height)
-      ctx.drawImage(rough(), 0, 0)
-      return
-    }
+    if (objTool !== 'paint' || !snap || !stroke) return refreshHasMask()
+    // snap just this stroke to the object's outline, then add it to what was there before
     setBusy(true)
     await new Promise((r) => setTimeout(r, 20))
     if (!photoRef.current || photoRef.current.src !== img.src) {
@@ -264,22 +378,38 @@ export default function UploadRoomModal() {
       await photoRef.current.decode()
     }
     const quads = surfaces.map((sf) => sf.quad.map(([x, y]) => [x * cv.width, y * cv.height] as [number, number]))
-    const refined = refineMaskCanvas(photoRef.current, rough(), cv.width, cv.height, quads)
-    ctx.clearRect(0, 0, cv.width, cv.height)
+    const refined = refineMaskCanvas(photoRef.current, stroke, cv.width, cv.height, quads)
+    const ctx = cv.getContext('2d')!
+    const before = undoRef.current[undoRef.current.length - 1]
+    if (before) ctx.putImageData(before, 0, 0)
+    ctx.globalCompositeOperation = 'source-over'
     ctx.drawImage(refined, 0, 0)
+    stroke.getContext('2d')!.clearRect(0, 0, stroke.width, stroke.height)
     setBusy(false)
+    refreshHasMask()
   }
   const last = useRef<[number, number] | null>(null)
+  const toMask = (e: React.PointerEvent<HTMLCanvasElement>): [number, number, number] => {
+    const cv = maskRef.current!
+    const q = local(cv, e.clientX, e.clientY)
+    return [(q.x / q.w) * cv.width, (q.y / q.h) * cv.height, (brush / q.w) * cv.width]
+  }
   const paint = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const cv = maskRef.current
-    if (!cv) return
-    const r = cv.getBoundingClientRect()
-    const x = ((e.clientX - r.left) / r.width) * cv.width
-    const y = ((e.clientY - r.top) / r.height) * cv.height
-    const size = (brush / r.width) * cv.width
+    if (!cv || pinch.current) return
+    const [x, y, size] = toMask(e)
     const [lx, ly] = last.current ?? [x, y]
-    for (const ctx of [cv.getContext('2d')!, rough().getContext('2d')!]) {
-      ctx.globalCompositeOperation = erase ? 'destination-out' : 'source-over'
+    const targets = [cv.getContext('2d')!]
+    if (objTool === 'paint' && snap) {
+      if (!strokeRef.current || strokeRef.current.width !== cv.width) {
+        strokeRef.current = document.createElement('canvas')
+        strokeRef.current.width = cv.width
+        strokeRef.current.height = cv.height
+      }
+      targets.push(strokeRef.current.getContext('2d')!)
+    }
+    targets.forEach((ctx, k) => {
+      ctx.globalCompositeOperation = objTool === 'erase' && k === 0 ? 'destination-out' : 'source-over'
       ctx.strokeStyle = ctx.fillStyle = 'rgba(255,40,120,1)'
       ctx.lineCap = 'round'
       ctx.lineWidth = size
@@ -287,9 +417,156 @@ export default function UploadRoomModal() {
       ctx.moveTo(lx, ly)
       ctx.lineTo(x, y)
       ctx.stroke()
-    }
+      ctx.globalCompositeOperation = 'source-over'
+    })
     last.current = [x, y]
-    if (!erase) setHasMask(true)
+    if (objTool === 'paint') setHasMask(true)
+  }
+  /** cursor that shows the tool and the real brush size */
+  const brushCursor = (() => {
+    if (mode !== 'objects') return 'default'
+    if (objTool === 'remove') return 'crosshair'
+    const d = Math.max(8, Math.min(100, Math.round(brush)))
+    const c = d / 2 + 1
+    const er = objTool === 'erase'
+    // ring = the real brush size; a small brush / eraser picture beside it says which tool is active
+    const ring = `<circle cx='${c}' cy='${c}' r='${d / 2}' fill='${er ? 'rgba(255,255,255,0.3)' : 'rgba(255,40,120,0.25)'}' stroke='black' stroke-width='2.4'/><circle cx='${c}' cy='${c}' r='${d / 2}' fill='none' stroke='${er ? 'white' : '%23ff2878'}' stroke-width='1.2' ${er ? "stroke-dasharray='4 3'" : ''}/>`
+    const o = d * 0.85 + 2
+    const icon = er
+      ? `<g transform='translate(${o} ${o}) rotate(-45 9 9)'><rect x='1' y='5' width='16' height='9' rx='2' fill='white' stroke='black' stroke-width='1.3'/><rect x='1' y='5' width='6' height='9' rx='2' fill='%23ff8fb8' stroke='black' stroke-width='1.3'/></g>`
+      : `<g transform='translate(${o} ${o})'><path d='M16 2L8 10' stroke='black' stroke-width='5' stroke-linecap='round'/><path d='M16 2L8 10' stroke='%23c98a4b' stroke-width='3' stroke-linecap='round'/><path d='M8 10L3 15' stroke='black' stroke-width='7' stroke-linecap='round'/><path d='M8 10L3 15' stroke='%23ff2878' stroke-width='5' stroke-linecap='round'/></g>`
+    const size = Math.ceil(o + 20)
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}'>${ring}${icon}</svg>`
+    return `url("data:image/svg+xml,${svg}") ${c} ${c}, crosshair`
+  })()
+
+  // ── focus mode: the photo fills the screen, tools shrink to a slim bar, the rest sits in a drawer
+  const vp = useViewport()
+  const [focus, setFocus] = useState(false)
+  const [drawer, setDrawer] = useState(false)
+  /**
+   * The editor box is drawn rotated a quarter turn: a landscape photo on a screen that is still
+   * upright. Where the browser can turn the screen itself the viewport becomes landscape and this
+   * switches off on its own, so it is decided from the real viewport, never from the lock call.
+   */
+  const rot = focus && !!img && img.w > img.h && vp.h > vp.w
+  const rotRef = useRef(rot)
+  rotRef.current = rot
+  /** pointer position inside an element in that element's own (un-rotated) pixels */
+  const local = (el: Element, cx: number, cy: number) => {
+    const r = el.getBoundingClientRect()
+    return rotRef.current ? { x: cy - r.top, y: r.right - cx, w: r.height, h: r.width } : { x: cx - r.left, y: cy - r.top, w: r.width, h: r.height }
+  }
+  const enterFocus = () => {
+    setFocus(true)
+    setDrawer(false)
+    void enterLandscape(!!img && img.w > img.h)
+  }
+  const exitFocus = () => {
+    setFocus(false)
+    setDrawer(false)
+    exitLandscape()
+  }
+  useEffect(() => () => exitLandscape(), [])
+  // a phone held sideways has no room for the side panel: open straight into focus mode
+  const autoFocused = useRef(false)
+  useEffect(() => {
+    if (!img) {
+      autoFocused.current = false
+      if (focus) exitFocus()
+      return
+    }
+    if (!autoFocused.current && window.innerHeight <= 560 && window.innerWidth > window.innerHeight) {
+      autoFocused.current = true
+      setFocus(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [img?.src])
+
+  // ── zoom & pan: work precisely on a corner or a thin edge
+  const viewRef = useRef<HTMLDivElement>(null)
+  const [zoom, setZoom] = useState(1)
+  const [hand, setHand] = useState(false)
+  const anchor = useRef<{ fx: number; fy: number; px: number; py: number } | null>(null)
+  const zoomTo = (z: number, clientX?: number, clientY?: number) => {
+    const v = viewRef.current
+    z = Math.min(8, Math.max(1, +z.toFixed(2)))
+    if (v) {
+      const c = v.getBoundingClientRect()
+      const q = local(v, clientX ?? c.left + c.width / 2, clientY ?? c.top + c.height / 2)
+      const px = q.x
+      const py = q.y
+      anchor.current = { fx: (v.scrollLeft + px) / v.scrollWidth, fy: (v.scrollTop + py) / v.scrollHeight, px, py }
+    }
+    setZoom(z)
+    if (z === 1) setHand(false)
+  }
+  useLayoutEffect(() => {
+    const v = viewRef.current
+    const a = anchor.current
+    if (!v || !a) return
+    v.scrollLeft = a.fx * v.scrollWidth - a.px
+    v.scrollTop = a.fy * v.scrollHeight - a.py
+    anchor.current = null
+  }, [zoom])
+  const zoomRef = useRef(zoom)
+  zoomRef.current = zoom
+  useEffect(() => {
+    const v = viewRef.current
+    if (!v) return
+    // Ctrl / ⌘ + wheel (and trackpad pinch) zooms around the pointer; plain wheel scrolls
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      zoomTo(zoomRef.current * (e.deltaY < 0 ? 1.2 : 1 / 1.2), e.clientX, e.clientY)
+    }
+    v.addEventListener('wheel', onWheel, { passive: false })
+    return () => v.removeEventListener('wheel', onWheel)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [img?.src])
+  const panFrom = useRef<{ x: number; y: number; l: number; t: number } | null>(null)
+  /** touch screens: bigger corner handles, and two fingers on the photo pinch-zoom / pan it */
+  const coarse = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+  const touches = useRef(new Map<number, { x: number; y: number }>())
+  const pinch = useRef<{ d: number; z: number; mx: number; my: number; l: number; t: number } | null>(null)
+  const pinchDown = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch') return
+    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (touches.current.size !== 2) return
+    const [a, b] = [...touches.current.values()]
+    const v = viewRef.current!
+    pinch.current = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, z: zoomRef.current, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, l: v.scrollLeft, t: v.scrollTop }
+    // a second finger means "zoom", not "paint": drop the stroke the first finger started
+    if (painting.current) {
+      painting.current = false
+      last.current = null
+      strokeRef.current?.getContext('2d')!.clearRect(0, 0, strokeRef.current.width, strokeRef.current.height)
+      undo()
+    }
+    drag.current = null
+  }
+  const pinchMove = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch' || !touches.current.has(e.pointerId)) return
+    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const p = pinch.current
+    if (!p || touches.current.size !== 2) return
+    const [a, b] = [...touches.current.values()]
+    const mx = (a.x + b.x) / 2
+    const my = (a.y + b.y) / 2
+    const z = Math.min(8, Math.max(1, p.z * (Math.hypot(a.x - b.x, a.y - b.y) / p.d)))
+    if (Math.abs(z - zoomRef.current) > 0.02) zoomTo(z, mx, my)
+    else {
+      const v = viewRef.current!
+      const [dx, dy] = rotRef.current ? [my - p.my, -(mx - p.mx)] : [mx - p.mx, my - p.my]
+      v.scrollLeft -= dx
+      v.scrollTop -= dy
+    }
+    p.mx = mx
+    p.my = my
+  }
+  const pinchUp = (e: React.PointerEvent) => {
+    touches.current.delete(e.pointerId)
+    if (touches.current.size < 2) pinch.current = null
   }
   const drag = useRef<{ sid: string; idx: number; kind: 'area' | 'perspective' } | null>(null)
   const [tool, setTool] = useState<'area' | 'perspective'>('area')
@@ -349,27 +626,26 @@ export default function UploadRoomModal() {
   /** the corner layer extends 15% past each photo edge, so floors can run out of the frame */
   const PAD = 0.15
   const toNorm = (e: React.PointerEvent): [number, number] => {
-    const r = svgRef.current!.getBoundingClientRect()
+    const q = local(svgRef.current!, e.clientX, e.clientY)
     const f = (v: number) => Math.max(-1.5, Math.min(2.5, v))
-    return [f(-PAD + (1 + 2 * PAD) * ((e.clientX - r.left) / r.width)), f(-PAD + (1 + 2 * PAD) * ((e.clientY - r.top) / r.height))]
+    return [f(-PAD + (1 + 2 * PAD) * (q.x / q.w)), f(-PAD + (1 + 2 * PAD) * (q.y / q.h))]
   }
 
   useEffect(() => {
-    if (!editing?.objMask || !img) return
+    const mask = editing?.objMask ?? detected
+    if (!mask || !img) return
     const im = new Image()
     im.onload = () => {
       const cv = maskRef.current
       if (!cv) return
       cv.getContext('2d')!.drawImage(im, 0, 0, cv.width, cv.height)
-      const r = (roughRef.current = document.createElement('canvas'))
-      r.width = cv.width
-      r.height = cv.height
-      r.getContext('2d')!.drawImage(im, 0, 0, cv.width, cv.height)
+      undoRef.current = []
+      setUndoCount(0)
       setHasMask(true)
     }
-    im.src = editing.objMask
+    im.src = mask
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing?.id, img?.src])
+  }, [editing?.id, img?.src, detected])
 
   /** Save edits to an existing room in place; applied tiles stay on surfaces that still exist. */
   const saveEdit = async () => {
@@ -425,7 +701,7 @@ export default function UploadRoomModal() {
       const all = LAYER_KEYS.every((k) => cutout[k])
       layers = { ...gen, ...cutout, cutoutGlossy: prepared?.glossy, source: all ? 'uploaded' : 'mixed' }
     }
-    addRoom({ id, name, image: img.src, width: img.w, height: img.h, surfaces, objMask, layers, createdAt: Date.now() })
+    addRoom({ id, name, image: img.src, width: img.w, height: img.h, surfaces, objMask, layers, auto: detected ? true : undefined, objClasses: objClasses ?? undefined, createdAt: Date.now() })
     openRoom(id, {})
     useStore.getState().select(surfaces.filter((s) => s.type === 'floor').map((s) => s.id).slice(0, 1))
     close()
@@ -457,6 +733,12 @@ export default function UploadRoomModal() {
                   setImg(null)
                   setPrepared(null)
                   setCutout({})
+                  setDetected(null)
+                  setHasMask(false)
+                  setObjClasses(null)
+                  undoRef.current = []
+                  setUndoCount(0)
+                  zoomTo(1)
                 }}
               >
                 Change image
@@ -507,8 +789,10 @@ export default function UploadRoomModal() {
             <input type="file" accept="image/*" hidden onChange={(e) => pickStart('photo', e.target.files?.[0])} />
           </label>
           <div className="start-side">
+            <details className="adv-cutouts" open={advOpen} onToggle={(e) => setAdvOpen((e.target as HTMLDetailsElement).open)}>
+            <summary>Have prepared cut-outs? (optional)</summary>
             <p className="hint">
-              <b>Have prepared cut-outs?</b> Add the <b>matt</b> (and optionally <b>glossy</b>) version of the same photo with the tile area <b>transparent</b>. Surfaces are detected automatically, objects stay intact and the cut-out's own shadows light the tiles. The original photo is optional then.
+              Add the <b>matt</b> (and optionally <b>glossy</b>) version of the same photo with the tile area <b>transparent</b>. Surfaces are detected automatically, objects stay intact and the cut-out's own shadows light the tiles. The original photo is optional then.
             </p>
             {(['matt', 'glossy'] as const).map((k) => (
               <label key={k} className={`drop small${start[k] ? ' has' : ''}`}>
@@ -516,13 +800,117 @@ export default function UploadRoomModal() {
                 <input type="file" accept="image/png,image/webp" hidden onChange={(e) => pickStart(k, e.target.files?.[0])} />
               </label>
             ))}
-            <button className="btn primary block" disabled={!start.photo && !start.matt} onClick={() => void begin()}>
-              {start.matt ? 'Detect surfaces & continue' : 'Continue: mark surfaces'}
-            </button>
+            </details>
+            {start.matt ? (
+              <button className="btn primary block" disabled={!start.photo && !start.matt} onClick={() => void begin()}>
+                Detect surfaces & continue
+              </button>
+            ) : (
+              <>
+                <button className="btn primary block" disabled={!start.photo || !!detecting} onClick={() => void begin(true)}>
+                  <Icon name="layers" size={15} /> {detecting ? 'Detecting…' : 'Detect room automatically'}
+                </button>
+                {detecting ? (
+                  <div className="detect-progress" role="status" aria-live="polite">
+                    <div className="bar">
+                      <i style={{ width: `${Math.round(detecting.fraction * 100)}%` }} />
+                    </div>
+                    <span className="hint">{detecting.stage}</span>
+                  </div>
+                ) : (
+                  <>
+                    <p className="hint">
+                      Finds the <b>floor, walls and ceiling</b>, splits walls at the room's corners, fits the perspective and keeps <b>furniture, plants, curtains and decor</b> on top. You can check and adjust the result before using the room.
+                    </p>
+                    <label className="check">
+                      <input type="checkbox" checked={overRugs} onChange={(e) => setOverRugs(e.target.checked)} /> Tile over rugs (otherwise rugs stay on the new floor)
+                    </label>
+                    <button className="btn block" disabled={!start.photo} onClick={() => void begin()}>
+                      Mark surfaces by hand instead
+                    </button>
+                  </>
+                )}
+              </>
+            )}
           </div>
         </div>
       ) : (
-        <div className="room-editor">
+        <div className={`room-editor${focus ? ' focus' : ''}${rot ? ' rot' : ''}`}>
+          <div className="editor-main">
+          {focus && (
+            <>
+              <button className="focus-btn exit" onClick={exitFocus} aria-label="Exit full screen" title="Exit full screen">
+                <Icon name="close" size={18} /> Done
+              </button>
+              <button className="focus-btn gear" onClick={() => setDrawer(!drawer)} aria-label="Steps and options" title="Steps and options">
+                <Icon name="settings" size={18} /> {mode === 'objects' ? 'Objects' : mode === 'surfaces' ? 'Surfaces' : 'Layers'}
+              </button>
+              <div className="focus-tools">
+                {mode === 'objects' ? (
+                  <>
+                    <div className="seg">
+                      <button className={objTool === 'paint' ? 'on' : ''} onClick={() => setObjTool('paint')} title="Paint">
+                        <span className="lbl">Paint</span>
+                      </button>
+                      <button className={objTool === 'erase' ? 'on' : ''} onClick={() => setObjTool('erase')} title="Erase">
+                        <span className="lbl">Erase</span>
+                      </button>
+                      <button className={objTool === 'remove' ? 'on' : ''} onClick={() => setObjTool('remove')} title="Remove a whole object">
+                        <span className="lbl">Remove</span>
+                      </button>
+                    </div>
+                    <input className="brush-range" type="range" min={6} max={90} value={brush} onChange={(e) => setBrush(Number(e.target.value))} aria-label="Brush size" title="Brush size" />
+                    <button className="btn sm" disabled={!undoCount} onClick={undo} aria-label="Undo" title="Undo">
+                      <Icon name="undo" size={15} />
+                    </button>
+                  </>
+                ) : mode === 'surfaces' ? (
+                  <>
+                    <select value={active ?? ''} onChange={(e) => setActive(e.target.value)} aria-label="Surface">
+                      {surfaces.map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.label}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="seg">
+                      <button className={tool === 'area' ? 'on' : ''} onClick={() => setTool('area')}>
+                        Area
+                      </button>
+                      <button className={tool === 'perspective' ? 'on' : ''} onClick={() => setTool('perspective')}>
+                        Guide
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </>
+          )}
+          <div className="zoom-bar">
+            <button className="btn sm" onClick={() => zoomTo(zoom / 1.5)} disabled={zoom <= 1} aria-label="Zoom out" title="Zoom out">
+              −
+            </button>
+            <span className="zoom-val">{Math.round(zoom * 100)}%</span>
+            <button className="btn sm" onClick={() => zoomTo(zoom * 1.5)} disabled={zoom >= 8} aria-label="Zoom in" title="Zoom in">
+              +
+            </button>
+            <button className="btn sm" onClick={() => zoomTo(1)} disabled={zoom === 1}>
+              Fit
+            </button>
+            <button className={`btn sm${hand ? ' primary' : ''}`} onClick={() => setHand(!hand)} disabled={zoom === 1} title="Drag the photo to move around while zoomed in">
+              ✋ Move
+            </button>
+            <span className="hint">{coarse ? 'Pinch with two fingers to zoom' : 'Zoom in to work on small details (Ctrl + scroll also zooms)'}</span>
+          </div>
+          <div
+            className={`editor-view${zoom > 1 ? ' zoomed' : ''}`}
+            ref={viewRef}
+            style={{ '--ar': img.w / img.h, '--zoom': zoom } as React.CSSProperties}
+            onPointerDownCapture={pinchDown}
+            onPointerMoveCapture={pinchMove}
+            onPointerUpCapture={pinchUp}
+            onPointerCancelCapture={pinchUp}
+          >
           <div className="editor-stage" style={{ aspectRatio: `${img.w} / ${img.h}` }}>
             <img src={img.src} alt="room" draggable={false} />
             <canvas
@@ -530,8 +918,14 @@ export default function UploadRoomModal() {
               width={img.w}
               height={img.h}
               className="obj-mask"
-              style={{ pointerEvents: mode === 'objects' ? 'auto' : 'none', cursor: mode === 'objects' ? 'crosshair' : 'default' }}
+              style={{ pointerEvents: mode === 'objects' ? 'auto' : 'none', cursor: brushCursor }}
               onPointerDown={(e) => {
+                if (busy) return
+                if (objTool === 'remove') {
+                  const [x, y] = toMask(e)
+                  return removeObjectAt(x, y)
+                }
+                pushUndo()
                 painting.current = true
                 last.current = null
                 e.currentTarget.setPointerCapture(e.pointerId)
@@ -539,6 +933,13 @@ export default function UploadRoomModal() {
               }}
               onPointerMove={(e) => painting.current && paint(e)}
               onPointerUp={() => {
+                if (!painting.current) return
+                painting.current = false
+                last.current = null
+                void finishStroke()
+              }}
+              onPointerCancel={() => {
+                if (!painting.current) return
                 painting.current = false
                 last.current = null
                 void finishStroke()
@@ -575,7 +976,7 @@ export default function UploadRoomModal() {
                 patch(act.id, { area: next })
               }}
               onPointerMove={(e) => {
-                if (!drag.current) return
+                if (!drag.current || pinch.current) return
                 const { sid, idx, kind } = drag.current
                 const p = toNorm(e)
                 setSurfaces((ss) =>
@@ -600,7 +1001,7 @@ export default function UploadRoomModal() {
                 <g pointerEvents="none">
                   <polyline points={[...split].sort((a, b) => a[0] - b[0]).map(([x, y]) => `${x * 1000},${y * 1000}`).join(' ')} fill="none" stroke="#ff2878" strokeWidth={3} strokeDasharray="12 6" vectorEffect="non-scaling-stroke" />
                   {split.map(([x, y], i) => (
-                    <circle key={i} cx={x * 1000} cy={y * 1000} r={10} fill="#ff2878" stroke="#fff" strokeWidth={3} vectorEffect="non-scaling-stroke" />
+                    <circle key={i} cx={x * 1000} cy={y * 1000} r={(coarse ? 16 : 10) / zoom} fill="#ff2878" stroke="#fff" strokeWidth={3} vectorEffect="non-scaling-stroke" />
                   ))}
                 </g>
               )}
@@ -620,7 +1021,7 @@ export default function UploadRoomModal() {
                           key={`${tool}-${i}`}
                           cx={x * 1000}
                           cy={y * 1000}
-                          r={tool === 'area' ? 11 : 15}
+                          r={(coarse ? (tool === 'area' ? 17 : 21) : tool === 'area' ? 11 : 15) / zoom}
                           fill={tool === 'area' ? COLORS[s.type] : '#fff'}
                           stroke={tool === 'area' ? '#fff' : COLORS[s.type]}
                           strokeWidth={4}
@@ -641,8 +1042,44 @@ export default function UploadRoomModal() {
                 )
               })}
             </svg>
+            {hand && zoom > 1 && (
+              <div
+                className="pan-layer"
+                onPointerDown={(e) => {
+                  const v = viewRef.current!
+                  e.currentTarget.setPointerCapture(e.pointerId)
+                  panFrom.current = { x: e.clientX, y: e.clientY, l: v.scrollLeft, t: v.scrollTop }
+                }}
+                onPointerMove={(e) => {
+                  const v = viewRef.current
+                  const f = panFrom.current
+                  if (!v || !f) return
+                  const [dx, dy] = rotRef.current ? [e.clientY - f.y, -(e.clientX - f.x)] : [e.clientX - f.x, e.clientY - f.y]
+                  v.scrollLeft = f.l - dx
+                  v.scrollTop = f.t - dy
+                }}
+                onPointerUp={() => (panFrom.current = null)}
+                onPointerCancel={() => (panFrom.current = null)}
+              />
+            )}
           </div>
-          <div className="editor-side">
+          </div>
+          {!focus && (
+            <button className="fs-btn" onClick={enterFocus} aria-label="Full screen" title="Edit full screen">
+              <Icon name="full" size={18} />
+            </button>
+          )}
+          </div>
+          {focus && drawer && <div className="drawer-back" onClick={() => setDrawer(false)} />}
+          <div className={`editor-side${focus && drawer ? ' open' : ''}`}>
+            {focus && (
+              <div className="drawer-head">
+                <b>Steps and options</b>
+                <button className="x" onClick={() => setDrawer(false)} aria-label="Close options">
+                  <Icon name="close" />
+                </button>
+              </div>
+            )}
             <div className="seg">
               <button className={mode === 'surfaces' ? 'on' : ''} onClick={() => setMode('surfaces')}>
                 1. Surfaces
@@ -681,31 +1118,52 @@ export default function UploadRoomModal() {
             )}
             {mode === 'cutout' ? null : mode === 'objects' ? (
               <>
-                <p className="hint">Roughly paint over anything standing in front of the floor or walls (sofa, bed, taps, plants, window frames). The outline is detected automatically and those pixels stay on top, untouched, whatever tiles or colours you apply.</p>
+                <p className="hint">Pink marks everything standing in front of the floor or walls (sofa, bed, taps, plants, window frames). Those pixels stay on top, untouched, whatever tiles or colours you apply.</p>
                 <label className="inline">
                   Brush <input type="range" min={6} max={90} value={brush} onChange={(e) => setBrush(Number(e.target.value))} />
                 </label>
-                <div className="seg">
-                  <button className={!erase ? 'on' : ''} onClick={() => setErase(false)}>
-                    Paint
+                <div className="seg obj-tools">
+                  <button className={objTool === 'paint' ? 'on' : ''} onClick={() => setObjTool('paint')} title="Paint: keep something on top of the tiles">
+                    🖌 Paint
                   </button>
-                  <button className={erase ? 'on' : ''} onClick={() => setErase(true)}>
-                    Erase
+                  <button className={objTool === 'erase' ? 'on' : ''} onClick={() => setObjTool('erase')} title="Erase: rub out only the part you touch">
+                    ◌ Erase
+                  </button>
+                  <button className={objTool === 'remove' ? 'on' : ''} onClick={() => setObjTool('remove')} title="Remove object: one tap removes that whole object">
+                    ✕ Remove object
                   </button>
                 </div>
-                <label className="check">
-                  <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> Snap to object edges (paint roughly, we follow the outline)
-                </label>
+                <p className="hint tool-hint">
+                  {objTool === 'paint'
+                    ? 'Paint over anything that should stay on top of the tiles. Only what you paint is added.'
+                    : objTool === 'erase'
+                      ? 'Rub out a part of the pink layer. Only what the eraser touches is removed; everything else stays.'
+                      : 'Tap a pink object to remove all of it at once (tiles will then cover it). Other objects stay.'}
+                </p>
+                {objTool === 'paint' && (
+                  <label className="check">
+                    <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> Snap my stroke to the object's edges (paint roughly, we follow the outline)
+                  </label>
+                )}
                 {busy && <span className="hint">Finding object edges…</span>}
-                <button
-                  className="btn sm"
-                  onClick={() => {
-                    for (const cv of [maskRef.current, roughRef.current]) cv?.getContext('2d')!.clearRect(0, 0, cv.width, cv.height)
-                    setHasMask(false)
-                  }}
-                >
-                  Clear objects
-                </button>
+                <div className="row">
+                  <button className="btn sm" disabled={!undoCount} onClick={undo}>
+                    <Icon name="undo" size={14} /> Undo
+                  </button>
+                  <button
+                    className="btn sm"
+                    disabled={!hasMask}
+                    onClick={() => {
+                      const cv = maskRef.current
+                      if (!cv) return
+                      pushUndo()
+                      cv.getContext('2d')!.clearRect(0, 0, cv.width, cv.height)
+                      setHasMask(false)
+                    }}
+                  >
+                    Clear all objects
+                  </button>
+                </div>
               </>
             ) : (
               <>
@@ -748,7 +1206,9 @@ export default function UploadRoomModal() {
                 : 'Place the 4 white handles on any rectangle lying on this surface, e.g. along plank or tile joints, until the grid lines follow the photo. It does not need to cover the whole floor: the plane is extended automatically. Width/depth below = that rectangle\'s real size.'}
             </p>
             <p className="hint">
-              {prepared
+              {detected
+                ? 'Everything here was detected automatically: each coloured area is a surface, pink is the object layer that stays on top. Adjust an area or its perspective guide here, fix objects in step 2 (paint to keep something on top, erase to tile over it), then press Use this room.'
+                : prepared
                 ? 'Surfaces were detected from your cut-out: the tile area and objects come from the cut-out itself. Check the perspective guide follows the floor lines and set its real size for correct tile scale.'
                 : 'Each surface has an area and a perspective guide. Floors that run out of the frame are fine: outline the visible part; the plane extends under it.'}
             </p>

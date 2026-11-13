@@ -57,17 +57,19 @@ export function IconBtn({ icon, label, onClick, active, badge, disabled }: { ico
   )
 }
 
-export function Modal({ title, onClose, children, wide, footer }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean | 'xl'; footer?: ReactNode }) {
+export function Modal({ title, onClose, children, wide, footer, full, headerExtra }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean | 'xl'; footer?: ReactNode; /** fill the whole screen */ full?: boolean; headerExtra?: ReactNode }) {
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', k)
     return () => window.removeEventListener('keydown', k)
   }, [onClose])
   return (
-    <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal${wide === 'xl' ? ' xl' : wide ? ' wide' : ''}`} role="dialog" aria-label={title}>
+    <div className={`modal-back${full ? ' full' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className={`modal${wide === 'xl' ? ' xl' : wide ? ' wide' : ''}${full ? ' full' : ''}`} role="dialog" aria-label={title}>
         <header>
           <h3>{title}</h3>
+          <span className="grow" />
+          {headerExtra}
           <button className="x" onClick={onClose} aria-label="Close">
             <Icon name="close" />
           </button>

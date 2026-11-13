@@ -8,6 +8,7 @@ import type { Application, LightTheme, SurfaceType } from '../types'
 import ProductPanel from './ProductPanel'
 import SettingsPanel from './SettingsPanel'
 import PhotoScene from './PhotoScene'
+import Preview from './Preview'
 import RoomSelect from './RoomSelect'
 import { addCurrentToCatalog } from './Modals'
 import { downloadDataUrl, Icon, IconBtn, Swatch } from './ui'
@@ -272,6 +273,8 @@ export default function Visualizer({ onClose }: { onClose: () => void }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const t = useT()
   const lang = useStore((s) => s.lang)
+  /** snapshot of the room shown full screen (null = closed) */
+  const [preview, setPreview] = useState<string | null>(null)
   const room = getRoom(roomId)
   const photo = photoRooms.find((r) => r.id === roomId)
 
@@ -287,14 +290,14 @@ export default function Visualizer({ onClose }: { onClose: () => void }) {
         {view === 'visualizer' && (
           <>
             <button className="btn ghost" onClick={backToRooms}>
-              <Icon name="back" /> {t('Change room')}
+              <Icon name="back" /> <span className="lbl">{t('Change room')}</span>
             </button>
             <div className="head-actions">
               <button className="btn sm" onClick={() => useStore.getState().setModal('inquiry')}>
-                <Icon name="info" size={15} /> {t('Get in touch')}
+                <Icon name="info" size={15} /> <span className="lbl">{t('Get in touch')}</span>
               </button>
               <button className="btn sm primary" onClick={addCurrentToCatalog}>
-                <Icon name="plus" size={15} /> {t('Add to Selection')}
+                <Icon name="plus" size={15} /> <span className="lbl">{t('Add to Selection')}</span>
               </button>
             </div>
             <span className="room-title">{roomName(roomId)}</span>
@@ -329,12 +332,25 @@ export default function Visualizer({ onClose }: { onClose: () => void }) {
                 photo && <PhotoScene room={photo} />
               )}
               <SettingsPanel />
+              {!panorama && (
+                <button
+                  className="preview-btn"
+                  onClick={() => {
+                    const url = useStore.getState().capture?.(true)
+                    if (url) setPreview(url)
+                  }}
+                  title="See the room full screen"
+                >
+                  <Icon name="full" size={16} /> Preview
+                </button>
+              )}
               {panorama && room && <div className="pano-hint">360° view · drag to look around</div>}
             </div>
             <AppliedBar />
           </div>
         </div>
       )}
+      {preview && <Preview src={preview} onClose={() => setPreview(null)} />}
     </div>
   )
 }

@@ -11,13 +11,18 @@
     "thumbnails": "node scripts/thumbnails.cjs",
     "compare": "node scripts/compare.cjs",
     "fixtures": "node scripts/fetch-fixtures.cjs",
-    "library": "node scripts/library.cjs"
+    "library": "node scripts/library.cjs",
+    "detect": "tsx scripts/detect/run.ts",
+    "detect:server": "tsx server/detect-server.ts",
+    "detect:e2e": "node scripts/detect/e2e.cjs",
+    "models:pack": "node scripts/detect/pack-models.cjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.2",
     "idb-keyval": "^6.3.0",
     "jspdf": "^4.2.1",
+    "onnxruntime-web": "^1.31.1",
     "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
@@ -31,7 +36,10 @@
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.187.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "onnxruntime-node": "^1.31.1",
     "oxlint": "^1.90.0",
+    "sharp": "^0.35.5",
+    "tsx": "^4.23.15",
     "typescript": "~7.0.2",
     "vite": "^8.3.6"
   }

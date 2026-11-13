@@ -35,6 +35,10 @@ export interface PhotoRoom {
   objMask?: string
   /** cut-out overlays (matt / glossy): transparent where tiles go, shadows baked in */
   layers?: import('./lib/roomLayers').RoomLayers
+  /** surfaces and object layer came from automatic room detection */
+  auto?: boolean
+  /** detected class of every pixel (low resolution): lets the editor remove one whole object */
+  objClasses?: import('./lib/detect').ObjClasses
   createdAt: number
 }
 

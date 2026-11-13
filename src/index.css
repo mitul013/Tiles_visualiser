@@ -1640,7 +1640,9 @@ input[type='range'] {
 }
 .room-editor {
   display: grid;
-  grid-template-columns: 1fr 300px;
+  /* minmax(0, …) + start: a tall side panel must not stretch the photo past the dialog */
+  grid-template-columns: minmax(0, 1fr) 300px;
+  align-items: start;
   gap: 18px;
 }
 .editor-stage {
@@ -1648,6 +1650,70 @@ input[type='range'] {
   width: 100%;
   max-height: 64vh;
   margin: 0 auto;
+}
+/* zoomable viewport around the photo: scrolls when zoomed in */
+.editor-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.editor-view {
+  max-height: 64vh;
+  border-radius: 10px;
+  overscroll-behavior: contain;
+}
+.zoom-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.zoom-bar .zoom-val {
+  min-width: 44px;
+  text-align: center;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.zoom-bar .hint {
+  margin: 0 0 0 6px;
+}
+.pan-layer {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+  touch-action: none;
+  z-index: 5;
+}
+.pan-layer:active {
+  cursor: grabbing;
+}
+.obj-tools {
+  width: 100%;
+}
+.obj-tools button {
+  flex: 1;
+}
+/* full-screen editor */
+.modal-back.full {
+  padding: 0;
+}
+.modal.full {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  border-radius: 0;
+}
+.modal.full .modal-body {
+  flex: 1;
+}
+.room-editor.full .editor-view,
+.room-editor.full .editor-stage {
+  max-height: calc(100vh - 210px);
+}
+.modal header .x + .x {
+  margin-left: 4px;
 }
 .editor-stage img,
 .editor-stage svg,
@@ -1988,4 +2054,672 @@ input[type='range'] {
 }
 .lib-card .rc-cat {
   color: var(--text);
+}
+
+/* automatic room detection progress */
+.detect-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.detect-progress .bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--chip);
+  overflow: hidden;
+}
+.detect-progress .bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+
+/* =====================================================================================
+   Responsive layout: phones, tablets, both orientations
+   - up to 900px wide            tablets in portrait and phones: room on top, catalogue below
+   - short landscape (≤ 560px h) phones on their side: room left, catalogue right
+   - small screens               every dialog becomes a full-screen sheet
+   - touch (pointer: coarse)     44px-class touch targets, 16px inputs (no iOS zoom-on-focus)
+   Safe areas (notch, home indicator) are padded with env(safe-area-inset-*).
+   ===================================================================================== */
+
+/* ---- room editor: the photo always keeps its shape and fits the space it has ---- */
+.editor-view {
+  --avail-h: 64vh;
+  max-height: none;
+  overflow: hidden; /* the handle layer reaches past the photo; it must not cover the tools */
+}
+.editor-view.zoomed {
+  overflow: auto;
+  max-height: var(--avail-h);
+  -webkit-overflow-scrolling: touch;
+}
+.editor-view .editor-stage {
+  /* as wide as allowed, but never taller than the space available (0.86 leaves the margins) */
+  width: calc(var(--zoom, 1) * min(82%, var(--avail-h) * var(--ar, 1.5) * 0.86));
+  max-height: none;
+  margin: 7% auto;
+}
+.editor-view.zoomed .editor-stage {
+  margin: calc(7% * var(--zoom, 1));
+}
+.room-editor.full .editor-view {
+  --avail-h: calc(100dvh - 230px);
+}
+.adv-cutouts {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.adv-cutouts > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3a4246;
+}
+.adv-cutouts[open] > summary {
+  margin-bottom: 8px;
+}
+.adv-cutouts .drop.small {
+  margin-top: 8px;
+}
+.pgrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* ---- tablets in portrait and phones ---- */
+@media (max-width: 900px) {
+  .viz-modal {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    background: var(--bg);
+  }
+  /* header: navigation on the first row, the tool strip on its own scrolling row */
+  .viz-head {
+    flex-wrap: wrap;
+    overflow: visible;
+    gap: 4px 8px;
+    padding: 6px 10px;
+    min-height: 0;
+  }
+  .toolbar {
+    order: 10;
+    flex: 1 0 100%;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    justify-content: space-between;
+  }
+  .toolbar::-webkit-scrollbar {
+    display: none;
+  }
+  .toolbar .sep {
+    flex: none;
+    margin: 0 2px;
+  }
+  .icon-btn {
+    flex: none;
+  }
+  /* drop-down menus become bottom sheets: reachable by thumb, never clipped by the strip */
+  .viz .menu,
+  .viz .menu.right {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    z-index: 60;
+    max-height: 60dvh;
+    overflow-y: auto;
+    box-shadow: 0 -6px 40px rgba(0, 0, 0, 0.3);
+  }
+  .viz .menu button {
+    padding: 12px;
+    font-size: 15px;
+  }
+  .lang-select {
+    max-width: 96px;
+  }
+  .pgrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .settings-panel {
+    max-width: calc(100% - 16px);
+    top: 8px;
+    right: 8px;
+    max-height: calc(100% - 16px);
+    overflow-y: auto;
+  }
+  /* editor: photo on top (stays in view while the tools scroll), tools below */
+  .room-editor {
+    gap: 10px;
+  }
+  .editor-main {
+    position: sticky;
+    top: -18px;
+    z-index: 4;
+    background: var(--panel);
+    padding-bottom: 6px;
+  }
+  .editor-view {
+    --avail-h: 44dvh;
+  }
+  .editor-view .editor-stage {
+    width: calc(var(--zoom, 1) * min(86%, var(--avail-h) * var(--ar, 1.5) * 0.86));
+    margin: 6% auto;
+  }
+  .zoom-bar .hint {
+    display: none;
+  }
+  .drop.big {
+    min-height: 200px;
+  }
+  .drop.big.has {
+    min-height: 0;
+  }
+  .drop.big.has img {
+    height: auto;
+    max-height: 46dvh;
+  }
+}
+@media (max-width: 600px) {
+  .head-actions .lbl {
+    display: none;
+  }
+  .head-actions .btn {
+    padding: 8px 10px;
+  }
+  .surface-chips {
+    padding: 6px 10px;
+  }
+  .applied-bar {
+    padding: 6px 10px;
+    gap: 8px;
+  }
+  .tabs button {
+    padding: 10px 4px;
+  }
+  .summary-box {
+    grid-template-columns: 1fr;
+  }
+  .layer-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 400px) {
+  .viz-head .btn.ghost .lbl {
+    display: none;
+  }
+  .pgrid {
+    gap: 6px;
+    padding: 4px 8px 12px;
+  }
+}
+
+/* ---- phones on their side: room on the left, catalogue on the right ---- */
+@media (max-height: 560px) and (orientation: landscape) {
+  .viz-head {
+    flex-wrap: nowrap;
+    padding: 4px 10px;
+    gap: 6px;
+  }
+  .toolbar {
+    order: 0;
+    flex: 1 1 0;
+  }
+  .brand,
+  .room-title {
+    display: none;
+  }
+  .head-actions .lbl,
+  .viz-head .btn.ghost .lbl {
+    display: none;
+  }
+  .viz-main {
+    flex-direction: row;
+  }
+  .left-panel {
+    width: min(40%, 330px);
+    height: auto;
+    border-top: 0;
+    border-right: 1px solid var(--line);
+  }
+  .pgrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .tabs button {
+    padding: 8px 4px;
+  }
+  .surface-chips {
+    padding: 4px 10px;
+  }
+  .applied-bar {
+    padding: 4px 10px;
+  }
+  .applied-bar .lbl,
+  .applied-actions .area {
+    display: none;
+  }
+  /* editor: photo left, tools right, each scrolling on its own */
+  .room-editor,
+  .room-editor.full {
+    grid-template-columns: minmax(0, 1fr) min(300px, 40vw);
+    gap: 10px;
+    height: 100%;
+  }
+  .editor-main {
+    position: relative;
+    top: 0;
+    padding: 0;
+  }
+  .editor-view,
+  .room-editor.full .editor-view {
+    --avail-h: calc(100dvh - 188px);
+  }
+  .zoom-bar {
+    gap: 4px;
+  }
+  .editor-view .editor-stage {
+    margin: 4% auto;
+  }
+  .editor-side {
+    overflow-y: auto;
+    max-height: calc(100dvh - 112px);
+    padding-right: 2px;
+  }
+  .start-upload {
+    grid-template-columns: 1.2fr 1fr;
+  }
+  .drop.big.has img {
+    max-height: calc(100dvh - 150px);
+  }
+}
+
+/* ---- small screens: dialogs are full-screen sheets ---- */
+@media (max-width: 640px), (max-height: 560px) {
+  .modal-back {
+    padding: 0;
+    place-items: stretch;
+  }
+  .modal,
+  .modal.wide,
+  .modal.xl {
+    width: 100%;
+    height: 100dvh;
+    max-height: none;
+    border-radius: 0;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .modal-body {
+    flex: 1;
+    padding: 14px;
+  }
+  .modal header {
+    padding: 8px 12px;
+  }
+  .modal footer {
+    padding: 8px 12px;
+  }
+  .modal footer label.inline {
+    flex: 1;
+    min-width: 0;
+  }
+  .modal footer label.inline input {
+    width: 100%;
+    min-width: 60px;
+  }
+  .modal footer .grow {
+    display: none;
+  }
+  /* the sheet already fills the screen: no separate full-screen switch needed */
+  .modal header .x[aria-label$='ull screen'] {
+    display: none;
+  }
+  .editor-main {
+    top: -14px;
+  }
+}
+@media (max-height: 560px) and (orientation: landscape) {
+  .modal:has(.room-editor) .modal-body {
+    overflow: hidden;
+    padding: 8px 12px;
+  }
+  .modal footer label.inline {
+    font-size: 0; /* keep the name field, drop its caption */
+  }
+  .modal footer label.inline input {
+    font-size: 16px;
+    max-width: 150px;
+  }
+}
+
+/* ---- touch screens: comfortable targets ---- */
+@media (pointer: coarse) {
+  .btn {
+    min-height: 42px;
+  }
+  .btn.sm {
+    min-height: 38px;
+    padding: 8px 12px;
+  }
+  .seg button {
+    min-height: 38px;
+  }
+  .chips button,
+  .surface-chips button {
+    min-height: 36px;
+  }
+  .x {
+    padding: 10px;
+  }
+  .icon-btn {
+    min-width: 42px;
+    min-height: 42px;
+    justify-content: center;
+  }
+  .tabs button {
+    min-height: 42px;
+  }
+  .surf-item {
+    min-height: 44px;
+  }
+  input[type='range'] {
+    min-height: 32px;
+  }
+  /* 16px stops iOS from zooming the page when a field gets focus */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+  .zoom-bar .btn {
+    min-width: 42px;
+    justify-content: center;
+  }
+}
+.layout-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+@media (max-width: 400px) {
+  .modal footer label.inline {
+    font-size: 0; /* keep the name field, drop its caption */
+  }
+}
+
+/* =====================================================================================
+   Focus mode (room editor) and full-screen preview
+   The photo fills the screen; tools shrink to a slim bar; steps and options sit in a drawer.
+   .rot = the box is drawn turned a quarter turn (a landscape room on a phone held upright,
+   where the browser cannot rotate the screen itself).
+   ===================================================================================== */
+#toast {
+  z-index: 400;
+}
+.editor-main {
+  position: relative;
+}
+.fs-btn,
+.preview-btn {
+  position: absolute;
+  right: 10px;
+  bottom: 12px;
+  z-index: 3;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(18, 23, 26, 0.74);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 42px;
+  min-height: 42px;
+  padding: 0 12px;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+}
+.fs-btn {
+  padding: 0;
+}
+.fs-btn:hover,
+.preview-btn:hover {
+  background: rgba(18, 23, 26, 0.9);
+}
+.room-editor.focus {
+  --fw: 100dvw;
+  --fh: 100dvh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: var(--fw);
+  height: var(--fh);
+  z-index: 300;
+  display: block;
+  background: #12171a;
+  overflow: hidden;
+}
+.room-editor.focus.rot {
+  --fw: 100dvh;
+  --fh: 100dvw;
+  transform-origin: 0 0;
+  transform: translateX(100dvw) rotate(90deg);
+}
+.room-editor.focus .editor-main {
+  position: absolute;
+  inset: 0;
+  top: 0;
+  display: block;
+  padding: 0;
+  background: none;
+}
+.room-editor.focus .editor-view {
+  --avail-h: calc(var(--fh) - 60px);
+  position: absolute;
+  inset: 0 0 60px 0;
+  max-height: none;
+  display: grid;
+  place-items: center;
+  border-radius: 0;
+}
+.room-editor.focus .editor-view.zoomed {
+  display: block;
+  overflow: auto;
+}
+.room-editor.focus .editor-view .editor-stage {
+  width: calc(var(--zoom, 1) * min(88%, var(--avail-h) * var(--ar, 1.5) * 0.84));
+  margin: 0;
+  outline-color: rgba(255, 255, 255, 0.3);
+}
+.room-editor.focus .editor-view.zoomed .editor-stage {
+  margin: calc(5% * var(--zoom, 1));
+}
+.focus-btn {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top));
+  z-index: 5;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #12171a;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+.focus-btn.exit {
+  left: max(8px, env(safe-area-inset-left));
+}
+.focus-btn.gear {
+  right: max(8px, env(safe-area-inset-right));
+}
+.focus-tools,
+.room-editor.focus .zoom-bar {
+  position: absolute;
+  bottom: max(8px, env(safe-area-inset-bottom));
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  color: #fff;
+}
+.focus-tools {
+  left: max(8px, env(safe-area-inset-left));
+}
+.room-editor.focus .zoom-bar {
+  right: max(8px, env(safe-area-inset-right));
+}
+.room-editor.focus .zoom-bar .hint,
+.focus-tools .lbl {
+  display: none;
+}
+.focus-tools .seg {
+  background: rgba(255, 255, 255, 0.16);
+}
+.focus-tools .seg button {
+  color: #fff;
+  min-width: 44px;
+  min-height: 40px;
+}
+.focus-tools .seg button.on {
+  background: #fff;
+  color: #12171a;
+}
+.focus-tools .brush-range {
+  width: 110px;
+}
+.focus-tools select {
+  min-height: 40px;
+  border-radius: 8px;
+  border: 0;
+  padding: 0 8px;
+  max-width: 130px;
+}
+.focus-tools .btn,
+.room-editor.focus .zoom-bar .btn {
+  min-height: 40px;
+  min-width: 40px;
+  justify-content: center;
+}
+.room-editor.focus .editor-side {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(330px, 88%);
+  max-height: none;
+  background: var(--panel);
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  transform: translateX(105%);
+  transition: transform 0.2s ease;
+  z-index: 8;
+  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.4);
+}
+.room-editor.focus .editor-side.open {
+  transform: none;
+}
+.drawer-back {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  background: rgba(0, 0, 0, 0.4);
+}
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+@media (min-width: 1000px) {
+  .focus-tools .lbl {
+    display: inline;
+  }
+}
+/* a phone held upright showing an upright photo: the two bars stack */
+@media (max-width: 640px) {
+  .room-editor.focus:not(.rot) .zoom-bar {
+    bottom: calc(56px + env(safe-area-inset-bottom));
+    left: max(8px, env(safe-area-inset-left));
+    right: auto;
+  }
+  .room-editor.focus:not(.rot) .editor-view {
+    --avail-h: calc(var(--fh) - 170px);
+    inset: 52px 0 112px 0;
+  }
+  .room-editor.focus:not(.rot) .focus-tools .brush-range {
+    width: 84px;
+  }
+}
+
+.preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100dvw;
+  height: 100dvh;
+  z-index: 350;
+  background: #000;
+  cursor: pointer;
+}
+.preview.rot {
+  width: 100dvh;
+  height: 100dvw;
+  transform-origin: 0 0;
+  transform: translateX(100dvw) rotate(90deg);
+}
+.preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+}
+.preview-close {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #12171a;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 0 16px;
+  font-weight: 600;
+  font-size: 14px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+/* focus bars: dark text on the white buttons, readable tool names */
+.focus-tools .btn,
+.room-editor.focus .zoom-bar .btn,
+.focus-tools select {
+  color: #12171a;
+  background: #fff;
+}
+.focus-tools .btn:disabled,
+.room-editor.focus .zoom-bar .btn:disabled {
+  opacity: 0.45;
+}
+.room-editor.focus .zoom-bar .btn.primary {
+  background: var(--gold, #c9a24a);
+  border-color: transparent;
+}
+.focus-tools .lbl {
+  display: inline;
+}
+.focus-tools .seg button {
+  font-size: 12.5px;
+  padding: 6px 9px;
+  white-space: nowrap;
+}
+.room-editor.focus .editor-view .editor-stage {
+  width: calc(var(--zoom, 1) * min(90%, var(--avail-h) * var(--ar, 1.5) * 0.88));
 }
