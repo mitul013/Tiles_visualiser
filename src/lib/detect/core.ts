@@ -368,6 +368,8 @@ export async function detectRoom(img: { data: Uint8ClampedArray | Uint8Array; wi
     /** index into walls for walls */
     wall: number
     id: number
+    /** distance as fitted to the depth map, when `d` was later corrected to meet the walls */
+    dFit?: number
   }
   const surfs: Surf[] = []
   const centroidOf = (pred: (i: number, x: number, y: number) => boolean): P2 | null => {
@@ -605,6 +607,42 @@ export async function detectRoom(img: { data: Uint8ClampedArray | Uint8Array; wi
         }
     }
   }
+  // ── a room is watertight: the floor (and ceiling) must meet each wall exactly along the junction
+  // seen in the photo. The planes were fitted one by one, so slide the floor / ceiling along
+  // their normal until they do. Walls are the reference: they are large, face the camera and are
+  // measured best. This makes tile sizes agree between floor and walls, as in a hand-built model.
+  {
+    const refit = (s: Surf | undefined, id: number) => {
+      if (!s || !wallS.length) return
+      const cand: number[] = []
+      const step = Math.max(1, Math.round(Math.max(W, H) / 800))
+      for (let y = 2; y < H - 2; y += step)
+        for (let x = 0; x < W; x += step) {
+          if (labels[y * W + x] !== id) continue
+          // a wall directly above the floor pixel (below, for the ceiling)
+          const o = labels[(id === 1 ? y - 2 : y + 2) * W + x]
+          if (o < 3) continue
+          const w = wallS[o - 3]
+          if (!w) continue
+          const xc = x + 0.5 - W / 2
+          const yc = (id === 1 ? y - 1 : y + 1) + 0.5 - H / 2
+          const rw = w.n[0] * (xc / f) + w.n[1] * (yc / f) + w.n[2]
+          const rs = s.n[0] * (xc / f) + s.n[1] * (yc / f) + s.n[2]
+          if (rw > 1e-6 && rs > 1e-6) cand.push((rs * w.d) / rw)
+        }
+      if (cand.length < 25) return
+      const d = median(cand)
+      // only a correction, never a different room
+      if (d > 0.6 * s.d && d < 1.6 * s.d) {
+        s.dFit = s.d
+        s.d = d
+      }
+    }
+    refit(floorS, 1)
+    refit(ceilS, 2)
+    if (floorS && ceilS) scale = Math.min(3, Math.max(0.35, 2.7 / (floorS.d + ceilS.d)))
+    else if (floorS) scale = Math.min(3, Math.max(0.35, Math.min(1.65, Math.max(1.1, floorS.d * scale)) / floorS.d))
+  }
   lap('labels')
 
   // ───────────────────────── 7. object layer: not a surface, edges snapped to the photo
@@ -623,7 +661,8 @@ export async function detectRoom(img: { data: Uint8ClampedArray | Uint8Array; wi
         const id = labels[fy * W + fx]
         const s = id === 1 ? floorS : id === 2 ? ceilS : id >= 3 ? wallS[id - 3] : undefined
         if (!s) continue
-        const e = invDepth(s, xOf(x), yOf(y))
+        // compare with the plane as the depth map sees it (not the junction-corrected one)
+        const e = (invDepth(s, xOf(x), yOf(y)) * s.d) / (s.dFit ?? s.d)
         rel[j] = e > 1e-6 ? (D[j] - e) / e : 0
       }
     // remove the slowly varying part (plane fit / network bias): keep what sticks out locally

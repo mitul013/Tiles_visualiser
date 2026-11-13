@@ -52,6 +52,30 @@ own masks for the same photo:
 Reproduce: `npm run detect -- photo.webp --ref-obj object_msk.webp --ref-ids unq.webp --rugs --ref-no-ceiling`
 (`--rugs` and `--ref-no-ceiling` because the reference tiles over rugs and does not offer the ceiling).
 
+## Real-world scale (how many tiles fit)
+
+A photo carries no absolute size, so the room's dimensions are estimated and then anchored:
+
+- depth gives every plane's distance; the floor and ceiling are then slid along their normals until
+  they meet each wall exactly on the junction seen in the photo, so floor and wall tile sizes agree;
+- the result is scaled so the ceiling is **2.7 m** high (when floor and ceiling are both visible),
+  otherwise so the camera sits at a typical 1.1 to 1.65 m.
+
+The reference's catalogue rooms are hand-built 3D models: a camera plus one plane per surface with
+a `mesh_size` and a `tile_size_ratio` (the size of a 600 mm tile on that plane; tile size on the
+plane = size in mm x ratio / 600). For the sample room that model is 2.70 m high with walls of
+4.25 m and 5.10 m. Measured against it at ten points on the same photo, 1 m on our surfaces is:
+
+| Surface | Across | Up / into the room |
+|---|---|---|
+| Left wall | within 1% | within 3% |
+| Right wall | 14 to 18% larger | within 3% |
+| Floor | within 4% | 8 to 19% larger |
+
+The remaining gap is along the direction that recedes from the camera, where the two camera
+estimates differ (theirs: 42 degrees wide with an off-centre optical axis; ours: 48 degrees, centred).
+The two photo rooms in the library take their surfaces from this detector.
+
 ## How it works
 
 ```

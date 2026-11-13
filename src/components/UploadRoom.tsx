@@ -89,7 +89,9 @@ export default function UploadRoomModal() {
       x.fillRect(0, 0, 2, 2)
       return c.toDataURL('image/png')
     }
-    if (!st.photoRooms.some((x) => x.id === r.id))
+    // a copy saved earlier keeps its designs but takes the library's current surfaces (sizes get corrected)
+    if (st.photoRooms.some((x) => x.id === r.id)) st.updatePhotoRoom(r.id, { surfaces: r.surfaces })
+    else
       addRoom({
         id: r.id,
         name: r.name,
