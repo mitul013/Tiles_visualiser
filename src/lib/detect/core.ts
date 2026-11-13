@@ -79,6 +79,8 @@ const C_WALL = 0
 const C_FLOOR = [3, 11, 52] // floor, sidewalk/pavement, path
 const C_CEILING = 5
 const C_RUG = 28
+/** the depth network's metres x this = real metres (calibrated on rooms with a known 2.7 m ceiling) */
+const DEPTH_BIAS = 1.2
 
 /** Network input size: photo aspect kept, long side ~`long`, both sides multiples of 32. */
 export function pickSegSize(W: number, H: number, long = 768): [number, number] {
@@ -614,34 +616,72 @@ export async function detectRoom(img: { data: Uint8ClampedArray | Uint8Array; wi
   {
     const refit = (s: Surf | undefined, id: number) => {
       if (!s || !wallS.length) return
+      // floor and ceiling are level: give both the room's one vertical (a thin sliver of ceiling
+      // is fitted poorly on its own), keeping the plane through the point under its centre pixel
+      {
+        const want: V3 = id === 1 ? [-up[0], -up[1], -up[2]] : up
+        const c = centroidOf((j) => dcls[j] === id)
+        if (c && dot(s.n, want) > 0.96) {
+          const r: V3 = [c[0] / f, c[1] / f, 1]
+          const k = dot(want, r) / (dot(s.n, r) || 1e-9)
+          if (k > 0) {
+            s.d = s.d * k
+            s.n = want
+          }
+        }
+      }
       const cand: number[] = []
       const step = Math.max(1, Math.round(Math.max(W, H) / 800))
-      for (let y = 2; y < H - 2; y += step)
-        for (let x = 0; x < W; x += step) {
-          if (labels[y * W + x] !== id) continue
-          // a wall directly above the floor pixel (below, for the ceiling)
-          const o = labels[(id === 1 ? y - 2 : y + 2) * W + x]
-          if (o < 3) continue
-          const w = wallS[o - 3]
-          if (!w) continue
-          const xc = x + 0.5 - W / 2
-          const yc = (id === 1 ? y - 1 : y + 1) + 0.5 - H / 2
-          const rw = w.n[0] * (xc / f) + w.n[1] * (yc / f) + w.n[2]
-          const rs = s.n[0] * (xc / f) + s.n[1] * (yc / f) + s.n[2]
-          if (rw > 1e-6 && rs > 1e-6) cand.push((rs * w.d) / rw)
+      // a skirting board or a ceiling moulding often sits between the two surfaces: accept a
+      // small gap and take the junction in its middle
+      const gap = Math.max(3, Math.round(H * 0.035))
+      for (let x = 0; x < W; x += step) {
+        // walk down the column: ceiling → wall → floor
+        let last = -1 // row of the last pixel of the upper surface (ceiling, or wall above a floor)
+        let lastWall = -1
+        for (let y = 0; y < H; y++) {
+          const l = labels[y * W + x]
+          const upper = id === 1 ? l >= 3 : l === 2
+          const lower = id === 1 ? l === 1 : l >= 3
+          if (upper) {
+            last = y
+            if (id === 1) lastWall = l
+          } else if (lower && last >= 0) {
+            if (y - last <= gap) {
+              const w = wallS[(id === 1 ? lastWall : l) - 3]
+              if (w) {
+                const xc = x + 0.5 - W / 2
+                const yc = (last + y) / 2 + 0.5 - H / 2
+                const rw = w.n[0] * (xc / f) + w.n[1] * (yc / f) + w.n[2]
+                const rs = s.n[0] * (xc / f) + s.n[1] * (yc / f) + s.n[2]
+                if (rw > 1e-6 && rs > 1e-6) cand.push((rs * w.d) / rw)
+              }
+            }
+            // for a ceiling only its first meeting with a wall counts; for a floor keep looking
+            // (a wall can show again below furniture)
+            if (id === 2) break
+            last = -1
+          } else if (l !== 0 && !upper) last = -1
         }
+      }
+      opts.debug?.('junction', Float32Array.from([id, cand.length, cand.length ? median(cand) : 0]), 1, 1)
       if (cand.length < 25) return
       const d = median(cand)
       // only a correction, never a different room
-      if (d > 0.6 * s.d && d < 1.6 * s.d) {
+      if (d > 0.5 * s.d && d < 1.7 * s.d) {
         s.dFit = s.d
         s.d = d
       }
     }
     refit(floorS, 1)
     refit(ceilS, 2)
+    // absolute size. With floor and ceiling both seen, the room is as high as a normal room
+    // (2.7 m). Otherwise trust the depth network's own metres, which run about a fifth short on
+    // the rooms measured against the reference, within a plausible camera height.
     if (floorS && ceilS) scale = Math.min(3, Math.max(0.35, 2.7 / (floorS.d + ceilS.d)))
-    else if (floorS) scale = Math.min(3, Math.max(0.35, Math.min(1.65, Math.max(1.1, floorS.d * scale)) / floorS.d))
+    else if (floorS) scale = Math.min(3, Math.max(0.35, Math.min(1.7, Math.max(1.0, floorS.d * DEPTH_BIAS)) / floorS.d))
+    else if (ceilS) scale = Math.min(3, Math.max(0.35, Math.min(1.7, Math.max(0.9, ceilS.d * DEPTH_BIAS)) / ceilS.d))
+    else scale = DEPTH_BIAS
   }
   lap('labels')
 

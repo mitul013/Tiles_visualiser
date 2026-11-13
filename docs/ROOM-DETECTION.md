@@ -54,26 +54,29 @@ Reproduce: `npm run detect -- photo.webp --ref-obj object_msk.webp --ref-ids unq
 
 ## Real-world scale (how many tiles fit)
 
-A photo carries no absolute size, so the room's dimensions are estimated and then anchored:
+A photo carries no absolute size, so the room's dimensions are estimated:
 
-- depth gives every plane's distance; the floor and ceiling are then slid along their normals until
-  they meet each wall exactly on the junction seen in the photo, so floor and wall tile sizes agree;
-- the result is scaled so the ceiling is **2.7 m** high (when floor and ceiling are both visible),
-  otherwise so the camera sits at a typical 1.1 to 1.65 m.
+1. depth gives every plane's distance from the camera;
+2. the floor and ceiling are made level (one shared vertical) and slid along it until they meet
+   each wall on the junction seen in the photo, across any skirting board or ceiling moulding;
+3. absolute size: with floor and ceiling both visible the room is taken to be **2.7 m** high;
+   otherwise the depth network's own metres are used (x 1.2, the bias measured on the rooms below),
+   kept within a plausible camera height.
 
-The reference's catalogue rooms are hand-built 3D models: a camera plus one plane per surface with
-a `mesh_size` and a `tile_size_ratio` (the size of a 600 mm tile on that plane; tile size on the
-plane = size in mm x ratio / 600). For the sample room that model is 2.70 m high with walls of
-4.25 m and 5.10 m. Measured against it at ten points on the same photo, 1 m on our surfaces is:
+**How the reference does it.** For an uploaded photo its server returns, per surface, four image
+corners plus `width_m`, `height_m`, `avg_depth` and `tiles_x` / `tiles_y` (= size in metres / 0.6),
+and a camera field of view. Nothing is hard-coded: the sizes follow from a metric depth estimate
+(`pixel size x avg_depth / focal length` reproduces them to within a few percent). On the test
+upload it measured the room 2.77 m high. Its catalogue rooms are hand-built 3D models instead
+(camera plus one plane per surface); the one checked is 2.70 m high.
 
-| Surface | Across | Up / into the room |
-|---|---|---|
-| Left wall | within 1% | within 3% |
-| Right wall | 14 to 18% larger | within 3% |
-| Floor | within 4% | 8 to 19% larger |
+Our size of 1 m on screen, compared with the reference on the same photos:
 
-The remaining gap is along the direction that recedes from the camera, where the two camera
-estimates differ (theirs: 42 degrees wide with an off-centre optical axis; ours: 48 degrees, centred).
+| Room | Camera | Walls | Floor |
+|---|---|---|---|
+| Uploaded photo (`tv_room_v3`) | focal length within 1% | 5 to 13% larger | 0 to 11% |
+| Catalogue room 1710 | 48 deg vs 42 deg wide | 0 to 4%, up to 18% along the receding wall | 1 to 4% across, 8 to 19% in depth |
+
 The two photo rooms in the library take their surfaces from this detector.
 
 ## How it works

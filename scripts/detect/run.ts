@@ -39,6 +39,7 @@ async function main() {
     detailSize: Number(flag('--detail', '0')),
     debug: args.includes('--debug')
       ? (name, data, w, h) => {
+          if (name === 'junction') return void console.log(`  ${name}: ${[...data].map((v) => +v.toFixed(3)).join(' ')}`)
           const buf = Buffer.alloc(w * h)
           for (let i = 0; i < w * h; i++) buf[i] = data instanceof Uint8Array ? data[i] * 255 : Math.max(0, Math.min(255, 128 + data[i] * 1200))
           void sharp(buf, { raw: { width: w, height: h, channels: 1 } }).png().toFile(path.join(outDir, `debug-${name}.png`))
