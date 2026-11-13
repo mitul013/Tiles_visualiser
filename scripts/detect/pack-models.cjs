@@ -14,7 +14,7 @@ if (!seg || !depth) {
 }
 const out = path.join(__dirname, '..', '..', 'public', 'models')
 fs.mkdirSync(out, { recursive: true })
-for (const f of fs.readdirSync(out)) if (/\.part\d+$|manifest\.json$/.test(f)) fs.unlinkSync(path.join(out, f))
+for (const f of fs.readdirSync(out)) if (/\.part\d+(\.bin)?$|manifest\.json$/.test(f)) fs.unlinkSync(path.join(out, f))
 const PART = 19 * 1024 * 1024
 const hash = crypto.createHash('sha256')
 const models = {}
@@ -23,7 +23,7 @@ for (const [key, file] of [['seg', seg], ['depth', depth]]) {
   hash.update(buf)
   const parts = []
   for (let off = 0, i = 0; off < buf.length; off += PART, i++) {
-    const name = `room-${key}.onnx.part${i}`
+    const name = `room-${key}.part${i}.bin`
     fs.writeFileSync(path.join(out, name), buf.subarray(off, off + PART))
     parts.push(name)
   }

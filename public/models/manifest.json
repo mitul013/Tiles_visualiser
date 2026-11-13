@@ -3,17 +3,17 @@
  "models": {
   "seg": {
    "parts": [
-    "room-seg.onnx.part0",
-    "room-seg.onnx.part1",
-    "room-seg.onnx.part2",
-    "room-seg.onnx.part3"
+    "room-seg.part0.bin",
+    "room-seg.part1.bin",
+    "room-seg.part2.bin",
+    "room-seg.part3.bin"
    ],
    "bytes": 59871050
   },
   "depth": {
    "parts": [
-    "room-depth.onnx.part0",
-    "room-depth.onnx.part1"
+    "room-depth.part0.bin",
+    "room-depth.part1.bin"
    ],
    "bytes": 27259378
   }
