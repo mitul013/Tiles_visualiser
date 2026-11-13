@@ -132,6 +132,8 @@ export default function UploadRoomModal() {
   const [detecting, setDetecting] = useState<{ stage: string; fraction: number } | null>(null)
   /** object layer of a room just detected automatically (shown in the editor for finishing touches) */
   const [detected, setDetected] = useState<string | null>(null)
+  /** prepared cut-outs are an advanced option: shown open on roomy screens, folded away on phones */
+  const [advOpen, setAdvOpen] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 901px) and (min-height: 601px)').matches)
   /** tile over rugs instead of keeping them on top of the new floor */
   const [overRugs, setOverRugs] = useState(false)
   /**
@@ -391,7 +393,7 @@ export default function UploadRoomModal() {
   }
   const paint = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const cv = maskRef.current
-    if (!cv) return
+    if (!cv || pinch.current) return
     const [x, y, size] = toMask(e)
     const [lx, ly] = last.current ?? [x, y]
     const targets = [cv.getContext('2d')!]
@@ -477,6 +479,48 @@ export default function UploadRoomModal() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [img?.src])
   const panFrom = useRef<{ x: number; y: number; l: number; t: number } | null>(null)
+  /** touch screens: bigger corner handles, and two fingers on the photo pinch-zoom / pan it */
+  const coarse = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+  const touches = useRef(new Map<number, { x: number; y: number }>())
+  const pinch = useRef<{ d: number; z: number; mx: number; my: number; l: number; t: number } | null>(null)
+  const pinchDown = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch') return
+    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (touches.current.size !== 2) return
+    const [a, b] = [...touches.current.values()]
+    const v = viewRef.current!
+    pinch.current = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, z: zoomRef.current, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, l: v.scrollLeft, t: v.scrollTop }
+    // a second finger means "zoom", not "paint": drop the stroke the first finger started
+    if (painting.current) {
+      painting.current = false
+      last.current = null
+      strokeRef.current?.getContext('2d')!.clearRect(0, 0, strokeRef.current.width, strokeRef.current.height)
+      undo()
+    }
+    drag.current = null
+  }
+  const pinchMove = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch' || !touches.current.has(e.pointerId)) return
+    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const p = pinch.current
+    if (!p || touches.current.size !== 2) return
+    const [a, b] = [...touches.current.values()]
+    const mx = (a.x + b.x) / 2
+    const my = (a.y + b.y) / 2
+    const z = Math.min(8, Math.max(1, p.z * (Math.hypot(a.x - b.x, a.y - b.y) / p.d)))
+    if (Math.abs(z - zoomRef.current) > 0.02) zoomTo(z, mx, my)
+    else {
+      const v = viewRef.current!
+      v.scrollLeft -= mx - p.mx
+      v.scrollTop -= my - p.my
+    }
+    p.mx = mx
+    p.my = my
+  }
+  const pinchUp = (e: React.PointerEvent) => {
+    touches.current.delete(e.pointerId)
+    if (touches.current.size < 2) pinch.current = null
+  }
   const drag = useRef<{ sid: string; idx: number; kind: 'area' | 'perspective' } | null>(null)
   const [tool, setTool] = useState<'area' | 'perspective'>('area')
   /** points tapped along the floor/wall junction while splitting (null = not splitting) */
@@ -706,8 +750,10 @@ export default function UploadRoomModal() {
             <input type="file" accept="image/*" hidden onChange={(e) => pickStart('photo', e.target.files?.[0])} />
           </label>
           <div className="start-side">
+            <details className="adv-cutouts" open={advOpen} onToggle={(e) => setAdvOpen((e.target as HTMLDetailsElement).open)}>
+            <summary>Have prepared cut-outs? (optional)</summary>
             <p className="hint">
-              <b>Have prepared cut-outs?</b> Add the <b>matt</b> (and optionally <b>glossy</b>) version of the same photo with the tile area <b>transparent</b>. Surfaces are detected automatically, objects stay intact and the cut-out's own shadows light the tiles. The original photo is optional then.
+              Add the <b>matt</b> (and optionally <b>glossy</b>) version of the same photo with the tile area <b>transparent</b>. Surfaces are detected automatically, objects stay intact and the cut-out's own shadows light the tiles. The original photo is optional then.
             </p>
             {(['matt', 'glossy'] as const).map((k) => (
               <label key={k} className={`drop small${start[k] ? ' has' : ''}`}>
@@ -715,6 +761,7 @@ export default function UploadRoomModal() {
                 <input type="file" accept="image/png,image/webp" hidden onChange={(e) => pickStart(k, e.target.files?.[0])} />
               </label>
             ))}
+            </details>
             {start.matt ? (
               <button className="btn primary block" disabled={!start.photo && !start.matt} onClick={() => void begin()}>
                 Detect surfaces & continue
@@ -765,14 +812,18 @@ export default function UploadRoomModal() {
             <button className={`btn sm${hand ? ' primary' : ''}`} onClick={() => setHand(!hand)} disabled={zoom === 1} title="Drag the photo to move around while zoomed in">
               ✋ Move
             </button>
-            <span className="hint">Zoom in to work on small details (Ctrl + scroll also zooms)</span>
+            <span className="hint">{coarse ? 'Pinch with two fingers to zoom' : 'Zoom in to work on small details (Ctrl + scroll also zooms)'}</span>
           </div>
           <div
-            className="editor-view"
+            className={`editor-view${zoom > 1 ? ' zoomed' : ''}`}
             ref={viewRef}
-            style={{ overflow: zoom > 1 ? 'auto' : 'visible' }}
+            style={{ '--ar': img.w / img.h, '--zoom': zoom } as React.CSSProperties}
+            onPointerDownCapture={pinchDown}
+            onPointerMoveCapture={pinchMove}
+            onPointerUpCapture={pinchUp}
+            onPointerCancelCapture={pinchUp}
           >
-          <div className="editor-stage" style={{ aspectRatio: `${img.w} / ${img.h}`, ...(zoom > 1 ? { width: `${zoom * 82}%`, margin: `${zoom * 7}%`, maxHeight: 'none' } : {}) }}>
+          <div className="editor-stage" style={{ aspectRatio: `${img.w} / ${img.h}` }}>
             <img src={img.src} alt="room" draggable={false} />
             <canvas
               ref={maskRef}
@@ -837,7 +888,7 @@ export default function UploadRoomModal() {
                 patch(act.id, { area: next })
               }}
               onPointerMove={(e) => {
-                if (!drag.current) return
+                if (!drag.current || pinch.current) return
                 const { sid, idx, kind } = drag.current
                 const p = toNorm(e)
                 setSurfaces((ss) =>
@@ -862,7 +913,7 @@ export default function UploadRoomModal() {
                 <g pointerEvents="none">
                   <polyline points={[...split].sort((a, b) => a[0] - b[0]).map(([x, y]) => `${x * 1000},${y * 1000}`).join(' ')} fill="none" stroke="#ff2878" strokeWidth={3} strokeDasharray="12 6" vectorEffect="non-scaling-stroke" />
                   {split.map(([x, y], i) => (
-                    <circle key={i} cx={x * 1000} cy={y * 1000} r={10 / zoom} fill="#ff2878" stroke="#fff" strokeWidth={3} vectorEffect="non-scaling-stroke" />
+                    <circle key={i} cx={x * 1000} cy={y * 1000} r={(coarse ? 16 : 10) / zoom} fill="#ff2878" stroke="#fff" strokeWidth={3} vectorEffect="non-scaling-stroke" />
                   ))}
                 </g>
               )}
@@ -882,7 +933,7 @@ export default function UploadRoomModal() {
                           key={`${tool}-${i}`}
                           cx={x * 1000}
                           cy={y * 1000}
-                          r={(tool === 'area' ? 11 : 15) / zoom}
+                          r={(coarse ? (tool === 'area' ? 17 : 21) : tool === 'area' ? 11 : 15) / zoom}
                           fill={tool === 'area' ? COLORS[s.type] : '#fff'}
                           stroke={tool === 'area' ? '#fff' : COLORS[s.type]}
                           strokeWidth={4}

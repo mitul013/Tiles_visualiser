@@ -2075,3 +2075,373 @@ input[type='range'] {
   border-radius: 999px;
   transition: width 0.25s ease;
 }
+
+/* =====================================================================================
+   Responsive layout: phones, tablets, both orientations
+   - up to 900px wide            tablets in portrait and phones: room on top, catalogue below
+   - short landscape (≤ 560px h) phones on their side: room left, catalogue right
+   - small screens               every dialog becomes a full-screen sheet
+   - touch (pointer: coarse)     44px-class touch targets, 16px inputs (no iOS zoom-on-focus)
+   Safe areas (notch, home indicator) are padded with env(safe-area-inset-*).
+   ===================================================================================== */
+
+/* ---- room editor: the photo always keeps its shape and fits the space it has ---- */
+.editor-view {
+  --avail-h: 64vh;
+  max-height: none;
+  overflow: hidden; /* the handle layer reaches past the photo; it must not cover the tools */
+}
+.editor-view.zoomed {
+  overflow: auto;
+  max-height: var(--avail-h);
+  -webkit-overflow-scrolling: touch;
+}
+.editor-view .editor-stage {
+  /* as wide as allowed, but never taller than the space available (0.86 leaves the margins) */
+  width: calc(var(--zoom, 1) * min(82%, var(--avail-h) * var(--ar, 1.5) * 0.86));
+  max-height: none;
+  margin: 7% auto;
+}
+.editor-view.zoomed .editor-stage {
+  margin: calc(7% * var(--zoom, 1));
+}
+.room-editor.full .editor-view {
+  --avail-h: calc(100dvh - 230px);
+}
+.adv-cutouts {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.adv-cutouts > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3a4246;
+}
+.adv-cutouts[open] > summary {
+  margin-bottom: 8px;
+}
+.adv-cutouts .drop.small {
+  margin-top: 8px;
+}
+.pgrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* ---- tablets in portrait and phones ---- */
+@media (max-width: 900px) {
+  .viz-modal {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    background: var(--bg);
+  }
+  /* header: navigation on the first row, the tool strip on its own scrolling row */
+  .viz-head {
+    flex-wrap: wrap;
+    overflow: visible;
+    gap: 4px 8px;
+    padding: 6px 10px;
+    min-height: 0;
+  }
+  .toolbar {
+    order: 10;
+    flex: 1 0 100%;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    justify-content: space-between;
+  }
+  .toolbar::-webkit-scrollbar {
+    display: none;
+  }
+  .toolbar .sep {
+    flex: none;
+    margin: 0 2px;
+  }
+  .icon-btn {
+    flex: none;
+  }
+  /* drop-down menus become bottom sheets: reachable by thumb, never clipped by the strip */
+  .viz .menu,
+  .viz .menu.right {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    z-index: 60;
+    max-height: 60dvh;
+    overflow-y: auto;
+    box-shadow: 0 -6px 40px rgba(0, 0, 0, 0.3);
+  }
+  .viz .menu button {
+    padding: 12px;
+    font-size: 15px;
+  }
+  .lang-select {
+    max-width: 96px;
+  }
+  .pgrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .settings-panel {
+    max-width: calc(100% - 16px);
+    top: 8px;
+    right: 8px;
+    max-height: calc(100% - 16px);
+    overflow-y: auto;
+  }
+  /* editor: photo on top (stays in view while the tools scroll), tools below */
+  .room-editor {
+    gap: 10px;
+  }
+  .editor-main {
+    position: sticky;
+    top: -18px;
+    z-index: 4;
+    background: var(--panel);
+    padding-bottom: 6px;
+  }
+  .editor-view {
+    --avail-h: 44dvh;
+  }
+  .editor-view .editor-stage {
+    width: calc(var(--zoom, 1) * min(86%, var(--avail-h) * var(--ar, 1.5) * 0.86));
+    margin: 6% auto;
+  }
+  .zoom-bar .hint {
+    display: none;
+  }
+  .drop.big {
+    min-height: 200px;
+  }
+  .drop.big.has {
+    min-height: 0;
+  }
+  .drop.big.has img {
+    height: auto;
+    max-height: 46dvh;
+  }
+}
+@media (max-width: 600px) {
+  .head-actions .lbl {
+    display: none;
+  }
+  .head-actions .btn {
+    padding: 8px 10px;
+  }
+  .surface-chips {
+    padding: 6px 10px;
+  }
+  .applied-bar {
+    padding: 6px 10px;
+    gap: 8px;
+  }
+  .tabs button {
+    padding: 10px 4px;
+  }
+  .summary-box {
+    grid-template-columns: 1fr;
+  }
+  .layer-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 400px) {
+  .viz-head .btn.ghost .lbl {
+    display: none;
+  }
+  .pgrid {
+    gap: 6px;
+    padding: 4px 8px 12px;
+  }
+}
+
+/* ---- phones on their side: room on the left, catalogue on the right ---- */
+@media (max-height: 560px) and (orientation: landscape) {
+  .viz-head {
+    flex-wrap: nowrap;
+    padding: 4px 10px;
+    gap: 6px;
+  }
+  .toolbar {
+    order: 0;
+    flex: 1 1 0;
+  }
+  .brand,
+  .room-title {
+    display: none;
+  }
+  .head-actions .lbl,
+  .viz-head .btn.ghost .lbl {
+    display: none;
+  }
+  .viz-main {
+    flex-direction: row;
+  }
+  .left-panel {
+    width: min(40%, 330px);
+    height: auto;
+    border-top: 0;
+    border-right: 1px solid var(--line);
+  }
+  .pgrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .tabs button {
+    padding: 8px 4px;
+  }
+  .surface-chips {
+    padding: 4px 10px;
+  }
+  .applied-bar {
+    padding: 4px 10px;
+  }
+  .applied-bar .lbl,
+  .applied-actions .area {
+    display: none;
+  }
+  /* editor: photo left, tools right, each scrolling on its own */
+  .room-editor,
+  .room-editor.full {
+    grid-template-columns: minmax(0, 1fr) min(300px, 40vw);
+    gap: 10px;
+    height: 100%;
+  }
+  .editor-main {
+    position: static;
+    padding: 0;
+  }
+  .editor-view,
+  .room-editor.full .editor-view {
+    --avail-h: calc(100dvh - 188px);
+  }
+  .zoom-bar {
+    gap: 4px;
+  }
+  .editor-view .editor-stage {
+    margin: 4% auto;
+  }
+  .editor-side {
+    overflow-y: auto;
+    max-height: calc(100dvh - 112px);
+    padding-right: 2px;
+  }
+  .start-upload {
+    grid-template-columns: 1.2fr 1fr;
+  }
+  .drop.big.has img {
+    max-height: calc(100dvh - 150px);
+  }
+}
+
+/* ---- small screens: dialogs are full-screen sheets ---- */
+@media (max-width: 640px), (max-height: 560px) {
+  .modal-back {
+    padding: 0;
+    place-items: stretch;
+  }
+  .modal,
+  .modal.wide,
+  .modal.xl {
+    width: 100%;
+    height: 100dvh;
+    max-height: none;
+    border-radius: 0;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .modal-body {
+    flex: 1;
+    padding: 14px;
+  }
+  .modal header {
+    padding: 8px 12px;
+  }
+  .modal footer {
+    padding: 8px 12px;
+  }
+  .modal footer label.inline {
+    flex: 1;
+    min-width: 0;
+  }
+  .modal footer label.inline input {
+    width: 100%;
+    min-width: 60px;
+  }
+  .modal footer .grow {
+    display: none;
+  }
+  /* the sheet already fills the screen: no separate full-screen switch needed */
+  .modal header .x[aria-label$='ull screen'] {
+    display: none;
+  }
+  .editor-main {
+    top: -14px;
+  }
+}
+@media (max-height: 560px) and (orientation: landscape) {
+  .modal:has(.room-editor) .modal-body {
+    overflow: hidden;
+    padding: 8px 12px;
+  }
+  .modal footer label.inline {
+    font-size: 0; /* keep the name field, drop its caption */
+  }
+  .modal footer label.inline input {
+    font-size: 16px;
+    max-width: 150px;
+  }
+}
+
+/* ---- touch screens: comfortable targets ---- */
+@media (pointer: coarse) {
+  .btn {
+    min-height: 42px;
+  }
+  .btn.sm {
+    min-height: 38px;
+    padding: 8px 12px;
+  }
+  .seg button {
+    min-height: 38px;
+  }
+  .chips button,
+  .surface-chips button {
+    min-height: 36px;
+  }
+  .x {
+    padding: 10px;
+  }
+  .icon-btn {
+    min-width: 42px;
+    min-height: 42px;
+    justify-content: center;
+  }
+  .tabs button {
+    min-height: 42px;
+  }
+  .surf-item {
+    min-height: 44px;
+  }
+  input[type='range'] {
+    min-height: 32px;
+  }
+  /* 16px stops iOS from zooming the page when a field gets focus */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+  .zoom-bar .btn {
+    min-width: 42px;
+    justify-content: center;
+  }
+}
+.layout-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+@media (max-width: 400px) {
+  .modal footer label.inline {
+    font-size: 0; /* keep the name field, drop its caption */
+  }
+}

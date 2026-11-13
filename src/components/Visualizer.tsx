@@ -287,14 +287,14 @@ export default function Visualizer({ onClose }: { onClose: () => void }) {
         {view === 'visualizer' && (
           <>
             <button className="btn ghost" onClick={backToRooms}>
-              <Icon name="back" /> {t('Change room')}
+              <Icon name="back" /> <span className="lbl">{t('Change room')}</span>
             </button>
             <div className="head-actions">
               <button className="btn sm" onClick={() => useStore.getState().setModal('inquiry')}>
-                <Icon name="info" size={15} /> {t('Get in touch')}
+                <Icon name="info" size={15} /> <span className="lbl">{t('Get in touch')}</span>
               </button>
               <button className="btn sm primary" onClick={addCurrentToCatalog}>
-                <Icon name="plus" size={15} /> {t('Add to Selection')}
+                <Icon name="plus" size={15} /> <span className="lbl">{t('Add to Selection')}</span>
               </button>
             </div>
             <span className="room-title">{roomName(roomId)}</span>

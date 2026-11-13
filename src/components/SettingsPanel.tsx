@@ -13,7 +13,8 @@ export default function SettingsPanel() {
   const selected = useStore((s) => s.selected)
   const applied = useStore((s) => s.applied)
   const apply = useStore((s) => s.apply)
-  const [open, setOpen] = useState(true)
+  // on phones the panel starts folded so it does not cover the room
+  const [open, setOpen] = useState(() => typeof window === 'undefined' || window.matchMedia('(min-width: 901px) and (min-height: 561px)').matches)
 
   const tiled = selected.filter((id) => applied[id]?.kind === 'tile')
   const paints = selected.filter((id) => applied[id]?.kind === 'paint')

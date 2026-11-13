@@ -20,6 +20,9 @@ The feature set was mapped from the public tilesview.ai visualiser with the
   ceiling and every object in front of them are found for you, with the perspective fitted per surface.
   Two open models (MIT / Apache-2.0) run in the browser or on your own server: no paid service.
   See [`docs/ROOM-DETECTION.md`](docs/ROOM-DETECTION.md)
+- **Phones and tablets**, portrait and landscape: room on top with the catalogue below (side by side when a phone
+  is turned), dialogs as full-screen sheets, menus as bottom sheets, touch-sized controls, pinch-to-zoom in the
+  room editor, notch / home-indicator safe areas
 - **Or mark it by hand**: mark each surface by dragging 4 corners, then roughly paint the **objects in
   front** (sofa, plants, taps): the outline is detected automatically and those objects stay on top,
   untouched. Tiles are perspective-mapped with the photo's own light and shadows and soft edges
