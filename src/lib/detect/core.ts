@@ -36,6 +36,11 @@ export interface DetectResult {
   /** object layer alpha (255 = object in front / not tileable), width*height */
   objAlpha: Uint8Array
   camera: { f: number; fovDeg: number; pitchDeg: number; scale: number }
+  /** what each pixel is (ADE20K class id) at network resolution: lets the editor remove one whole
+   *  object (a sofa) without touching the curtain it overlaps */
+  classMap: Uint8Array
+  classW: number
+  classH: number
   /** class of every pixel: 0 object, 1 floor, 2 ceiling, 3+ walls (debug / tests) */
   labels: Uint8Array
   timings: Record<string, number>
@@ -118,9 +123,16 @@ export async function detectRoom(img: { data: Uint8ClampedArray | Uint8Array; wi
   const pW = new Float32Array(ln)
   const pC = new Float32Array(ln)
   const pR = new Float32Array(ln)
+  const classMap = new Uint8Array(ln)
   for (let i = 0; i < ln; i++) {
     let mx = -Infinity
-    for (let c = 0; c < nc; c++) mx = Math.max(mx, seg.data[c * ln + i])
+    for (let c = 0; c < nc; c++) {
+      const v = seg.data[c * ln + i]
+      if (v > mx) {
+        mx = v
+        classMap[i] = c
+      }
+    }
     let sum = 0
     for (let c = 0; c < nc; c++) sum += Math.exp(seg.data[c * ln + i] - mx)
     const p = (c: number) => Math.exp(seg.data[c * ln + i] - mx) / sum
@@ -754,6 +766,9 @@ export async function detectRoom(img: { data: Uint8ClampedArray | Uint8Array; wi
     surfaces: out,
     objAlpha,
     camera: { f, fovDeg: (2 * Math.atan(Math.max(W, H) / 2 / f) * 180) / Math.PI, pitchDeg: (Math.asin(Math.max(-1, Math.min(1, -up[2]))) * 180) / Math.PI, scale },
+    classMap,
+    classW: lw,
+    classH: lh,
     labels,
     timings,
   }

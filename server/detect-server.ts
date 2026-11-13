@@ -5,7 +5,7 @@
  *   PORT=9000 DETECT_ORIGIN=https://shop.example npm run detect:server
  *
  * POST /detect            body: the room photo (JPEG / PNG / WebP bytes)   ?rugs=1 tiles over rugs
- *   → { width, height, surfaces[], camera, objMask }   objMask = greyscale PNG data URL (white = object)
+ *   → { width, height, surfaces[], camera, objMask, classes }   objMask = greyscale PNG data URL (white = object)
  * GET  /health            → { ok: true }
  *
  * Point the web app at it by building with VITE_DETECT_API=https://your-host (see docs/ROOM-DETECTION.md).
@@ -65,7 +65,7 @@ const server = http.createServer((req, res) => {
       })
       const png = await sharp(Buffer.from(r.objAlpha), { raw: { width: W, height: H, channels: 1 } }).png().toBuffer()
       console.log(`${new Date().toISOString()} ${W}x${H} ${r.surfaces.map((s) => s.label).join(', ')} in ${Date.now() - t} ms`)
-      send(200, { width: W, height: H, surfaces: r.surfaces, camera: r.camera, objMask: `data:image/png;base64,${png.toString('base64')}` })
+      send(200, { width: W, height: H, surfaces: r.surfaces, camera: r.camera, objMask: `data:image/png;base64,${png.toString('base64')}`, classes: { w: r.classW, h: r.classH, data: Buffer.from(r.classMap).toString('base64') } })
     })
     queue = job.catch((e) => {
       console.error(e)

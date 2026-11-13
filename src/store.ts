@@ -37,6 +37,8 @@ export interface PhotoRoom {
   layers?: import('./lib/roomLayers').RoomLayers
   /** surfaces and object layer came from automatic room detection */
   auto?: boolean
+  /** detected class of every pixel (low resolution): lets the editor remove one whole object */
+  objClasses?: import('./lib/detect').ObjClasses
   createdAt: number
 }
 

@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useStore, type PhotoSurface } from '../store'
 import type { SurfaceType } from '../types'
 import { Icon, Modal, toast } from './ui'
 import { refineMaskCanvas } from '../lib/objectMask'
 import { generateLayers, type RoomLayers } from '../lib/roomLayers'
 import { detectSurfaces } from '../lib/detectSurfaces'
-import { detectRoomPhoto } from '../lib/detect'
+import { classesFromB64, detectRoomPhoto, type ObjClasses } from '../lib/detect'
 import { applyH, extendQuad, squareToQuad, type Pt } from '../lib/homography'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
@@ -185,6 +185,7 @@ export default function UploadRoomModal() {
         // strokes add to / erase from the detected object layer exactly as painted
         setSnap(false)
         setDetected(det.objMask)
+        setObjClasses(det.classes ?? null)
         const walls = surfs.filter((x) => x.type === 'wall').length
         const parts = [surfs.some((x) => x.type === 'floor') && 'floor', walls && `${walls} wall${walls > 1 ? 's' : ''}`, surfs.some((x) => x.type === 'ceiling') && 'ceiling'].filter(Boolean)
         toast(`Detected: ${parts.join(', ')} and the objects in front. Check it, then press Use this room.`)
@@ -250,13 +251,18 @@ export default function UploadRoomModal() {
     // detected rooms already have a precise object layer: strokes add to / erase from it as painted
     // (colour snapping would re-segment the whole layer and lose objects coloured like the wall)
     if (editing.auto) setSnap(false)
+    setObjClasses(editing.objClasses ?? null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingId])
   const svgRef = useRef<SVGSVGElement>(null)
   const maskRef = useRef<HTMLCanvasElement>(null)
   const [mode, setMode] = useState<'surfaces' | 'objects' | 'cutout'>('surfaces')
   const [brush, setBrush] = useState(28)
-  const [erase, setErase] = useState(false)
+  /**
+   * object tools: paint = add to the object layer, erase = rub out only what the brush touches,
+   * remove = one tap removes that whole object, move = drag the zoomed photo around
+   */
+  const [objTool, setObjTool] = useState<'paint' | 'erase' | 'remove'>('paint')
   const [hasMask, setHasMask] = useState(false)
   const [snap, setSnap] = useState(true)
   /** optional uploaded cut-out overlays (transparent where tiles go) */
@@ -278,28 +284,87 @@ export default function UploadRoomModal() {
     reader.readAsDataURL(f)
   }
   const [busy, setBusy] = useState(false)
-  /** the user's rough strokes; the visible mask is these strokes snapped to object outlines */
-  const roughRef = useRef<HTMLCanvasElement | null>(null)
   const photoRef = useRef<HTMLImageElement | null>(null)
   const painting = useRef(false)
-  const rough = () => {
-    const cv = maskRef.current!
-    if (!roughRef.current || roughRef.current.width !== cv.width) {
-      roughRef.current = document.createElement('canvas')
-      roughRef.current.width = cv.width
-      roughRef.current.height = cv.height
+  /**
+   * The mask canvas is the single source of truth for the object layer. Every action changes only
+   * the pixels it touches: a paint stroke adds (optionally snapped to the object's outline), the
+   * eraser removes what it rubs, "remove object" clears one object. Nothing else is recomputed, so
+   * an edit can never wipe the rest of the selection.
+   */
+  /** the stroke being painted, kept apart so that only this stroke is snapped to object edges */
+  const strokeRef = useRef<HTMLCanvasElement | null>(null)
+  const undoRef = useRef<ImageData[]>([])
+  const [undoCount, setUndoCount] = useState(0)
+  const pushUndo = () => {
+    const cv = maskRef.current
+    if (!cv) return
+    undoRef.current.push(cv.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, cv.width, cv.height))
+    if (undoRef.current.length > 8) undoRef.current.shift()
+    setUndoCount(undoRef.current.length)
+  }
+  const refreshHasMask = () => {
+    const cv = maskRef.current
+    if (!cv) return
+    const d = cv.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, cv.width, cv.height).data
+    let any = false
+    for (let i = 3; i < d.length; i += 16) if (d[i] > 20) {
+      any = true
+      break
     }
-    return roughRef.current
+    setHasMask(any)
+  }
+  const undo = () => {
+    const cv = maskRef.current
+    const snapShot = undoRef.current.pop()
+    if (!cv || !snapShot) return
+    cv.getContext('2d')!.putImageData(snapShot, 0, 0)
+    setUndoCount(undoRef.current.length)
+    refreshHasMask()
+  }
+  /** detected class of every pixel (when the room was detected automatically) */
+  const [objClasses, setObjClasses] = useState<ObjClasses | null>(null)
+  /** Remove the whole object under a tap: the connected pink region of the same detected kind. */
+  const removeObjectAt = (x: number, y: number) => {
+    const cv = maskRef.current
+    if (!cv) return
+    const W = cv.width
+    const H = cv.height
+    const ctx = cv.getContext('2d', { willReadFrequently: true })!
+    const im = ctx.getImageData(0, 0, W, H)
+    const d = im.data
+    const px = Math.min(W - 1, Math.max(0, Math.round(x)))
+    const py = Math.min(H - 1, Math.max(0, Math.round(y)))
+    if (d[(py * W + px) * 4 + 3] <= 40) return toast('Tap on a pink object to remove it')
+    const cls = objClasses ? classesFromB64(objClasses) : null
+    const kind = (i: number) => (cls && objClasses ? cls[Math.min(objClasses.h - 1, Math.floor((((i / W) | 0) * objClasses.h) / H)) * objClasses.w + Math.min(objClasses.w - 1, Math.floor(((i % W) * objClasses.w) / W))] : 0)
+    const start = py * W + px
+    const want = kind(start)
+    pushUndo()
+    const seen = new Uint8Array(W * H)
+    const stack = [start]
+    seen[start] = 1
+    while (stack.length) {
+      const i = stack.pop()!
+      d[i * 4 + 3] = 0
+      const cx = i % W
+      for (const n of [cx > 0 ? i - 1 : -1, cx < W - 1 ? i + 1 : -1, i - W, i + W]) {
+        if (n < 0 || n >= W * H || seen[n]) continue
+        seen[n] = 1
+        // soft edge pixels belong to the object whatever their class; solid ones must be the same kind
+        const al = d[n * 4 + 3]
+        if (al > 40 && (al < 200 || kind(n) === want)) stack.push(n)
+      }
+    }
+    ctx.putImageData(im, 0, 0)
+    refreshHasMask()
   }
   const finishStroke = async () => {
     const cv = maskRef.current
+    const stroke = strokeRef.current
     if (!cv || !img) return
-    const ctx = cv.getContext('2d')!
-    if (!snap) {
-      ctx.clearRect(0, 0, cv.width, cv.height)
-      ctx.drawImage(rough(), 0, 0)
-      return
-    }
+    if (objTool !== 'paint' || !snap || !stroke) return refreshHasMask()
+    // snap just this stroke to the object's outline, then add it to what was there before
     setBusy(true)
     await new Promise((r) => setTimeout(r, 20))
     if (!photoRef.current || photoRef.current.src !== img.src) {
@@ -308,22 +373,38 @@ export default function UploadRoomModal() {
       await photoRef.current.decode()
     }
     const quads = surfaces.map((sf) => sf.quad.map(([x, y]) => [x * cv.width, y * cv.height] as [number, number]))
-    const refined = refineMaskCanvas(photoRef.current, rough(), cv.width, cv.height, quads)
-    ctx.clearRect(0, 0, cv.width, cv.height)
+    const refined = refineMaskCanvas(photoRef.current, stroke, cv.width, cv.height, quads)
+    const ctx = cv.getContext('2d')!
+    const before = undoRef.current[undoRef.current.length - 1]
+    if (before) ctx.putImageData(before, 0, 0)
+    ctx.globalCompositeOperation = 'source-over'
     ctx.drawImage(refined, 0, 0)
+    stroke.getContext('2d')!.clearRect(0, 0, stroke.width, stroke.height)
     setBusy(false)
+    refreshHasMask()
   }
   const last = useRef<[number, number] | null>(null)
+  const toMask = (e: React.PointerEvent<HTMLCanvasElement>): [number, number, number] => {
+    const cv = maskRef.current!
+    const r = cv.getBoundingClientRect()
+    return [((e.clientX - r.left) / r.width) * cv.width, ((e.clientY - r.top) / r.height) * cv.height, (brush / r.width) * cv.width]
+  }
   const paint = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const cv = maskRef.current
     if (!cv) return
-    const r = cv.getBoundingClientRect()
-    const x = ((e.clientX - r.left) / r.width) * cv.width
-    const y = ((e.clientY - r.top) / r.height) * cv.height
-    const size = (brush / r.width) * cv.width
+    const [x, y, size] = toMask(e)
     const [lx, ly] = last.current ?? [x, y]
-    for (const ctx of [cv.getContext('2d')!, rough().getContext('2d')!]) {
-      ctx.globalCompositeOperation = erase ? 'destination-out' : 'source-over'
+    const targets = [cv.getContext('2d')!]
+    if (objTool === 'paint' && snap) {
+      if (!strokeRef.current || strokeRef.current.width !== cv.width) {
+        strokeRef.current = document.createElement('canvas')
+        strokeRef.current.width = cv.width
+        strokeRef.current.height = cv.height
+      }
+      targets.push(strokeRef.current.getContext('2d')!)
+    }
+    targets.forEach((ctx, k) => {
+      ctx.globalCompositeOperation = objTool === 'erase' && k === 0 ? 'destination-out' : 'source-over'
       ctx.strokeStyle = ctx.fillStyle = 'rgba(255,40,120,1)'
       ctx.lineCap = 'round'
       ctx.lineWidth = size
@@ -331,10 +412,71 @@ export default function UploadRoomModal() {
       ctx.moveTo(lx, ly)
       ctx.lineTo(x, y)
       ctx.stroke()
-    }
+      ctx.globalCompositeOperation = 'source-over'
+    })
     last.current = [x, y]
-    if (!erase) setHasMask(true)
+    if (objTool === 'paint') setHasMask(true)
   }
+  /** cursor that shows the tool and the real brush size */
+  const brushCursor = (() => {
+    if (mode !== 'objects') return 'default'
+    if (objTool === 'remove') return 'crosshair'
+    const d = Math.max(8, Math.min(100, Math.round(brush)))
+    const c = d / 2 + 1
+    const er = objTool === 'erase'
+    // ring = the real brush size; a small brush / eraser picture beside it says which tool is active
+    const ring = `<circle cx='${c}' cy='${c}' r='${d / 2}' fill='${er ? 'rgba(255,255,255,0.3)' : 'rgba(255,40,120,0.25)'}' stroke='black' stroke-width='2.4'/><circle cx='${c}' cy='${c}' r='${d / 2}' fill='none' stroke='${er ? 'white' : '%23ff2878'}' stroke-width='1.2' ${er ? "stroke-dasharray='4 3'" : ''}/>`
+    const o = d * 0.85 + 2
+    const icon = er
+      ? `<g transform='translate(${o} ${o}) rotate(-45 9 9)'><rect x='1' y='5' width='16' height='9' rx='2' fill='white' stroke='black' stroke-width='1.3'/><rect x='1' y='5' width='6' height='9' rx='2' fill='%23ff8fb8' stroke='black' stroke-width='1.3'/></g>`
+      : `<g transform='translate(${o} ${o})'><path d='M16 2L8 10' stroke='black' stroke-width='5' stroke-linecap='round'/><path d='M16 2L8 10' stroke='%23c98a4b' stroke-width='3' stroke-linecap='round'/><path d='M8 10L3 15' stroke='black' stroke-width='7' stroke-linecap='round'/><path d='M8 10L3 15' stroke='%23ff2878' stroke-width='5' stroke-linecap='round'/></g>`
+    const size = Math.ceil(o + 20)
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}'>${ring}${icon}</svg>`
+    return `url("data:image/svg+xml,${svg}") ${c} ${c}, crosshair`
+  })()
+
+  // ── zoom & pan: work precisely on a corner or a thin edge
+  const viewRef = useRef<HTMLDivElement>(null)
+  const [zoom, setZoom] = useState(1)
+  const [hand, setHand] = useState(false)
+  const [full, setFull] = useState(false)
+  const anchor = useRef<{ fx: number; fy: number; px: number; py: number } | null>(null)
+  const zoomTo = (z: number, clientX?: number, clientY?: number) => {
+    const v = viewRef.current
+    z = Math.min(8, Math.max(1, +z.toFixed(2)))
+    if (v) {
+      const r = v.getBoundingClientRect()
+      const px = clientX === undefined ? r.width / 2 : clientX - r.left
+      const py = clientY === undefined ? r.height / 2 : clientY - r.top
+      anchor.current = { fx: (v.scrollLeft + px) / v.scrollWidth, fy: (v.scrollTop + py) / v.scrollHeight, px, py }
+    }
+    setZoom(z)
+    if (z === 1) setHand(false)
+  }
+  useLayoutEffect(() => {
+    const v = viewRef.current
+    const a = anchor.current
+    if (!v || !a) return
+    v.scrollLeft = a.fx * v.scrollWidth - a.px
+    v.scrollTop = a.fy * v.scrollHeight - a.py
+    anchor.current = null
+  }, [zoom])
+  const zoomRef = useRef(zoom)
+  zoomRef.current = zoom
+  useEffect(() => {
+    const v = viewRef.current
+    if (!v) return
+    // Ctrl / ⌘ + wheel (and trackpad pinch) zooms around the pointer; plain wheel scrolls
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      zoomTo(zoomRef.current * (e.deltaY < 0 ? 1.2 : 1 / 1.2), e.clientX, e.clientY)
+    }
+    v.addEventListener('wheel', onWheel, { passive: false })
+    return () => v.removeEventListener('wheel', onWheel)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [img?.src])
+  const panFrom = useRef<{ x: number; y: number; l: number; t: number } | null>(null)
   const drag = useRef<{ sid: string; idx: number; kind: 'area' | 'perspective' } | null>(null)
   const [tool, setTool] = useState<'area' | 'perspective'>('area')
   /** points tapped along the floor/wall junction while splitting (null = not splitting) */
@@ -406,10 +548,8 @@ export default function UploadRoomModal() {
       const cv = maskRef.current
       if (!cv) return
       cv.getContext('2d')!.drawImage(im, 0, 0, cv.width, cv.height)
-      const r = (roughRef.current = document.createElement('canvas'))
-      r.width = cv.width
-      r.height = cv.height
-      r.getContext('2d')!.drawImage(im, 0, 0, cv.width, cv.height)
+      undoRef.current = []
+      setUndoCount(0)
       setHasMask(true)
     }
     im.src = mask
@@ -470,7 +610,7 @@ export default function UploadRoomModal() {
       const all = LAYER_KEYS.every((k) => cutout[k])
       layers = { ...gen, ...cutout, cutoutGlossy: prepared?.glossy, source: all ? 'uploaded' : 'mixed' }
     }
-    addRoom({ id, name, image: img.src, width: img.w, height: img.h, surfaces, objMask, layers, auto: detected ? true : undefined, createdAt: Date.now() })
+    addRoom({ id, name, image: img.src, width: img.w, height: img.h, surfaces, objMask, layers, auto: detected ? true : undefined, objClasses: objClasses ?? undefined, createdAt: Date.now() })
     openRoom(id, {})
     useStore.getState().select(surfaces.filter((s) => s.type === 'floor').map((s) => s.id).slice(0, 1))
     close()
@@ -484,6 +624,14 @@ export default function UploadRoomModal() {
       title={editing ? `Adjust surfaces · ${editing.name}` : 'Upload a picture of your room'}
       onClose={close}
       wide="xl"
+      full={full && !!img}
+      headerExtra={
+        img ? (
+          <button className="x" onClick={() => setFull(!full)} title={full ? 'Exit full screen' : 'Full screen'} aria-label={full ? 'Exit full screen' : 'Full screen'}>
+            <Icon name="full" />
+          </button>
+        ) : null
+      }
       footer={
         img ? (
           <>
@@ -504,7 +652,10 @@ export default function UploadRoomModal() {
                   setCutout({})
                   setDetected(null)
                   setHasMask(false)
-                  roughRef.current = null
+                  setObjClasses(null)
+                  undoRef.current = []
+                  setUndoCount(0)
+                  zoomTo(1)
                 }}
               >
                 Change image
@@ -598,16 +749,44 @@ export default function UploadRoomModal() {
           </div>
         </div>
       ) : (
-        <div className="room-editor">
-          <div className="editor-stage" style={{ aspectRatio: `${img.w} / ${img.h}` }}>
+        <div className={`room-editor${full ? ' full' : ''}`}>
+          <div className="editor-main">
+          <div className="zoom-bar">
+            <button className="btn sm" onClick={() => zoomTo(zoom / 1.5)} disabled={zoom <= 1} aria-label="Zoom out" title="Zoom out">
+              −
+            </button>
+            <span className="zoom-val">{Math.round(zoom * 100)}%</span>
+            <button className="btn sm" onClick={() => zoomTo(zoom * 1.5)} disabled={zoom >= 8} aria-label="Zoom in" title="Zoom in">
+              +
+            </button>
+            <button className="btn sm" onClick={() => zoomTo(1)} disabled={zoom === 1}>
+              Fit
+            </button>
+            <button className={`btn sm${hand ? ' primary' : ''}`} onClick={() => setHand(!hand)} disabled={zoom === 1} title="Drag the photo to move around while zoomed in">
+              ✋ Move
+            </button>
+            <span className="hint">Zoom in to work on small details (Ctrl + scroll also zooms)</span>
+          </div>
+          <div
+            className="editor-view"
+            ref={viewRef}
+            style={{ overflow: zoom > 1 ? 'auto' : 'visible' }}
+          >
+          <div className="editor-stage" style={{ aspectRatio: `${img.w} / ${img.h}`, ...(zoom > 1 ? { width: `${zoom * 82}%`, margin: `${zoom * 7}%`, maxHeight: 'none' } : {}) }}>
             <img src={img.src} alt="room" draggable={false} />
             <canvas
               ref={maskRef}
               width={img.w}
               height={img.h}
               className="obj-mask"
-              style={{ pointerEvents: mode === 'objects' ? 'auto' : 'none', cursor: mode === 'objects' ? 'crosshair' : 'default' }}
+              style={{ pointerEvents: mode === 'objects' ? 'auto' : 'none', cursor: brushCursor }}
               onPointerDown={(e) => {
+                if (busy) return
+                if (objTool === 'remove') {
+                  const [x, y] = toMask(e)
+                  return removeObjectAt(x, y)
+                }
+                pushUndo()
                 painting.current = true
                 last.current = null
                 e.currentTarget.setPointerCapture(e.pointerId)
@@ -615,6 +794,13 @@ export default function UploadRoomModal() {
               }}
               onPointerMove={(e) => painting.current && paint(e)}
               onPointerUp={() => {
+                if (!painting.current) return
+                painting.current = false
+                last.current = null
+                void finishStroke()
+              }}
+              onPointerCancel={() => {
+                if (!painting.current) return
                 painting.current = false
                 last.current = null
                 void finishStroke()
@@ -676,7 +862,7 @@ export default function UploadRoomModal() {
                 <g pointerEvents="none">
                   <polyline points={[...split].sort((a, b) => a[0] - b[0]).map(([x, y]) => `${x * 1000},${y * 1000}`).join(' ')} fill="none" stroke="#ff2878" strokeWidth={3} strokeDasharray="12 6" vectorEffect="non-scaling-stroke" />
                   {split.map(([x, y], i) => (
-                    <circle key={i} cx={x * 1000} cy={y * 1000} r={10} fill="#ff2878" stroke="#fff" strokeWidth={3} vectorEffect="non-scaling-stroke" />
+                    <circle key={i} cx={x * 1000} cy={y * 1000} r={10 / zoom} fill="#ff2878" stroke="#fff" strokeWidth={3} vectorEffect="non-scaling-stroke" />
                   ))}
                 </g>
               )}
@@ -696,7 +882,7 @@ export default function UploadRoomModal() {
                           key={`${tool}-${i}`}
                           cx={x * 1000}
                           cy={y * 1000}
-                          r={tool === 'area' ? 11 : 15}
+                          r={(tool === 'area' ? 11 : 15) / zoom}
                           fill={tool === 'area' ? COLORS[s.type] : '#fff'}
                           stroke={tool === 'area' ? '#fff' : COLORS[s.type]}
                           strokeWidth={4}
@@ -717,6 +903,27 @@ export default function UploadRoomModal() {
                 )
               })}
             </svg>
+            {hand && zoom > 1 && (
+              <div
+                className="pan-layer"
+                onPointerDown={(e) => {
+                  const v = viewRef.current!
+                  e.currentTarget.setPointerCapture(e.pointerId)
+                  panFrom.current = { x: e.clientX, y: e.clientY, l: v.scrollLeft, t: v.scrollTop }
+                }}
+                onPointerMove={(e) => {
+                  const v = viewRef.current
+                  const f = panFrom.current
+                  if (!v || !f) return
+                  v.scrollLeft = f.l - (e.clientX - f.x)
+                  v.scrollTop = f.t - (e.clientY - f.y)
+                }}
+                onPointerUp={() => (panFrom.current = null)}
+                onPointerCancel={() => (panFrom.current = null)}
+              />
+            )}
+          </div>
+          </div>
           </div>
           <div className="editor-side">
             <div className="seg">
@@ -757,31 +964,52 @@ export default function UploadRoomModal() {
             )}
             {mode === 'cutout' ? null : mode === 'objects' ? (
               <>
-                <p className="hint">Roughly paint over anything standing in front of the floor or walls (sofa, bed, taps, plants, window frames). The outline is detected automatically and those pixels stay on top, untouched, whatever tiles or colours you apply.</p>
+                <p className="hint">Pink marks everything standing in front of the floor or walls (sofa, bed, taps, plants, window frames). Those pixels stay on top, untouched, whatever tiles or colours you apply.</p>
                 <label className="inline">
                   Brush <input type="range" min={6} max={90} value={brush} onChange={(e) => setBrush(Number(e.target.value))} />
                 </label>
-                <div className="seg">
-                  <button className={!erase ? 'on' : ''} onClick={() => setErase(false)}>
-                    Paint
+                <div className="seg obj-tools">
+                  <button className={objTool === 'paint' ? 'on' : ''} onClick={() => setObjTool('paint')} title="Paint: keep something on top of the tiles">
+                    🖌 Paint
                   </button>
-                  <button className={erase ? 'on' : ''} onClick={() => setErase(true)}>
-                    Erase
+                  <button className={objTool === 'erase' ? 'on' : ''} onClick={() => setObjTool('erase')} title="Erase: rub out only the part you touch">
+                    ◌ Erase
+                  </button>
+                  <button className={objTool === 'remove' ? 'on' : ''} onClick={() => setObjTool('remove')} title="Remove object: one tap removes that whole object">
+                    ✕ Remove object
                   </button>
                 </div>
-                <label className="check">
-                  <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> Snap to object edges (paint roughly, we follow the outline)
-                </label>
+                <p className="hint tool-hint">
+                  {objTool === 'paint'
+                    ? 'Paint over anything that should stay on top of the tiles. Only what you paint is added.'
+                    : objTool === 'erase'
+                      ? 'Rub out a part of the pink layer. Only what the eraser touches is removed; everything else stays.'
+                      : 'Tap a pink object to remove all of it at once (tiles will then cover it). Other objects stay.'}
+                </p>
+                {objTool === 'paint' && (
+                  <label className="check">
+                    <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} /> Snap my stroke to the object's edges (paint roughly, we follow the outline)
+                  </label>
+                )}
                 {busy && <span className="hint">Finding object edges…</span>}
-                <button
-                  className="btn sm"
-                  onClick={() => {
-                    for (const cv of [maskRef.current, roughRef.current]) cv?.getContext('2d')!.clearRect(0, 0, cv.width, cv.height)
-                    setHasMask(false)
-                  }}
-                >
-                  Clear objects
-                </button>
+                <div className="row">
+                  <button className="btn sm" disabled={!undoCount} onClick={undo}>
+                    <Icon name="undo" size={14} /> Undo
+                  </button>
+                  <button
+                    className="btn sm"
+                    disabled={!hasMask}
+                    onClick={() => {
+                      const cv = maskRef.current
+                      if (!cv) return
+                      pushUndo()
+                      cv.getContext('2d')!.clearRect(0, 0, cv.width, cv.height)
+                      setHasMask(false)
+                    }}
+                  >
+                    Clear all objects
+                  </button>
+                </div>
               </>
             ) : (
               <>

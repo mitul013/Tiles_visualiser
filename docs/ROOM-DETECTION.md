@@ -21,6 +21,15 @@ perspective guide and the object layer already filled in, so the result can be c
 finishing touches (drag an area point, move the guide, paint or erase objects) before pressing
 **Use this room**. **Mark surfaces by hand instead** keeps the fully manual route.
 
+Editing the object layer (step 2 of the editor):
+
+- **Paint** adds what you paint; **Erase** rubs out only what the eraser touches; **Remove object**
+  takes out one whole object with a single tap (it uses the detected kind of each pixel, so removing
+  a plant leaves the curtain behind it). No action ever changes the rest of the layer.
+- **Undo** steps back through the last 8 actions.
+- **Zoom** (− / + / Fit, or Ctrl + scroll) with **Move** to drag the zoomed photo, and a
+  **full screen** button in the dialog header, for precise work on corners and thin edges.
+
 ## Measured against the reference
 
 On the sample room supplied with this feature (`room_original_2.webp`), compared with the reference's
