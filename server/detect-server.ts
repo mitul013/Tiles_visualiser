@@ -9,6 +9,7 @@
  *   → { width, height, surfaces[], camera, objMask, classes }   objMask = greyscale PNG data URL (white = object)
  *   503 when the queue is full: the web app then detects in the browser instead
  * GET  /health            → { ok, model, queue }
+ * GET  /                  → a demo page
  *
  * Point the web app at it by building with VITE_DETECT_API=https://your-host (docs/ROOM-DETECTION.md).
  * No third-party service is called: open models run locally on the CPU.
@@ -38,6 +39,8 @@ const DETAIL = Number(process.env.DETECT_DETAIL ?? 1218)
 /** photos waiting or running; beyond this the server answers 503 and the browser does the work */
 const MAX_QUEUE = Number(process.env.DETECT_MAX_QUEUE ?? 6)
 
+// a small demo page at / (upload a photo, see the detected surfaces and objects)
+const DEMO = fs.existsSync(path.join(here, 'demo.html')) ? fs.readFileSync(path.join(here, 'demo.html'), 'utf8') : '<p>Room detection service: POST /detect</p>'
 const models = await loadModels(MODEL_DIR, THREADS, useLarge ? LARGE : undefined)
 console.log(`segmentation: ${useLarge ? `large (${path.basename(LARGE)})` : 'standard (public/models)'}, ${SEG_SIZE} px; thin-object pass ${DETAIL || 'off'}; ${THREADS} threads`)
 
@@ -57,6 +60,10 @@ const server = http.createServer((req, res) => {
   }
   const url = new URL(req.url ?? '/', 'http://localhost')
   if (req.method === 'OPTIONS') return void res.writeHead(204, cors).end()
+  if (req.method === 'GET' && url.pathname === '/') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+    return void res.end(DEMO)
+  }
   if (req.method === 'GET' && url.pathname === '/health') return send(200, { ok: true, model: useLarge ? 'large' : 'standard', queue: waiting })
   if (req.method !== 'POST' || url.pathname !== '/detect') return send(404, { error: 'not found' })
   if (waiting >= MAX_QUEUE) return send(503, { error: 'busy' })

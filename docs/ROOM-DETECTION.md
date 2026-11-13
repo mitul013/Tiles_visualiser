@@ -169,25 +169,21 @@ docker run -p 7860:7860 -e DETECT_ORIGIN=https://your-shop.example room-detect
 The image exports the large model itself when `server/models/` is empty, so a plain checkout builds.
 Tested here: built, then run with `--cpus 2 --memory 6g`.
 
-### Free hosting: Hugging Face Spaces
+### Hosting
 
-A free CPU Space (2 vCPU, 16 GB RAM) runs this image unchanged; no paid service is involved.
+The service needs about 3.5 GB of RAM and 2+ CPU cores; any machine that runs Docker will do.
 
-1. On huggingface.co create a Space, SDK **Docker**, hardware **CPU basic (free)**.
-2. Push this repository to the Space's git remote, with this front matter at the top of its
-   `README.md`:
-   ```yaml
-   ---
-   title: Room detection
-   sdk: docker
-   app_port: 7860
-   ---
-   ```
-3. In the Space's settings add the variable `DETECT_ORIGIN` = your shop's URL.
-4. Build the web app with `VITE_DETECT_API=https://<user>-<space>.hf.space`.
+- **Hugging Face Spaces**: Docker Spaces now need a PRO subscription, even on the basic CPU
+  (checked when deploying; the Hub answers "402"). Only static Spaces are free, which suits the web
+  app itself (browser detection), not this service.
+- **Oracle Cloud Always Free**: an Arm VM with 4 cores and 24 GB is free indefinitely (a card is
+  asked for at sign-up for verification). Install Docker and run the image above.
+- **Google Cloud Run**: has a monthly free allowance that a few hundred photos a month fit in
+  (4 GB memory, 2 CPUs); needs a billing account, and charges beyond the allowance.
+- Hosts with 512 MB free tiers (Render, Koyeb) are too small for these models.
 
-A free Space sleeps after a period without visits and takes about a minute to wake; during that
-minute the web app simply detects in the browser.
+Then build the web app with `VITE_DETECT_API=https://your-host`. Until a backend runs, the web app
+detects in the browser.
 
 | Variable | Default | Meaning |
 |---|---|---|

@@ -20,7 +20,7 @@ The feature set was mapped from the public tilesview.ai visualiser with the
   ceiling and every object in front of them are found for you, with the perspective fitted per surface.
   Three open models (MIT / Apache-2.0 / BSD) run in the browser or on your own server: no paid service.
   Each room's real size is measured from the photo, so tile counts match the reference.
-  Best run on the bundled backend (Docker, free Hugging Face Space): faster, a larger model, nothing for
+  Best run on the bundled backend (Docker): faster, a larger model, nothing for
   visitors to download, and the browser takes over automatically if it is unreachable.
   See [`docs/ROOM-DETECTION.md`](docs/ROOM-DETECTION.md)
 - **Phones and tablets**, portrait and landscape: room on top with the catalogue below (side by side when a phone
