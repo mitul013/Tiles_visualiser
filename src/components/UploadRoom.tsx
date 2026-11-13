@@ -7,6 +7,7 @@ import { generateLayers, type RoomLayers } from '../lib/roomLayers'
 import { detectSurfaces } from '../lib/detectSurfaces'
 import { classesFromB64, detectRoomPhoto, type ObjClasses } from '../lib/detect'
 import { applyH, extendQuad, squareToQuad, type Pt } from '../lib/homography'
+import { enterLandscape, exitLandscape, useViewport } from '../lib/fullscreen'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
@@ -388,8 +389,8 @@ export default function UploadRoomModal() {
   const last = useRef<[number, number] | null>(null)
   const toMask = (e: React.PointerEvent<HTMLCanvasElement>): [number, number, number] => {
     const cv = maskRef.current!
-    const r = cv.getBoundingClientRect()
-    return [((e.clientX - r.left) / r.width) * cv.width, ((e.clientY - r.top) / r.height) * cv.height, (brush / r.width) * cv.width]
+    const q = local(cv, e.clientX, e.clientY)
+    return [(q.x / q.w) * cv.width, (q.y / q.h) * cv.height, (brush / q.w) * cv.width]
   }
   const paint = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const cv = maskRef.current
@@ -437,19 +438,62 @@ export default function UploadRoomModal() {
     return `url("data:image/svg+xml,${svg}") ${c} ${c}, crosshair`
   })()
 
+  // ── focus mode: the photo fills the screen, tools shrink to a slim bar, the rest sits in a drawer
+  const vp = useViewport()
+  const [focus, setFocus] = useState(false)
+  const [drawer, setDrawer] = useState(false)
+  /**
+   * The editor box is drawn rotated a quarter turn: a landscape photo on a screen that is still
+   * upright. Where the browser can turn the screen itself the viewport becomes landscape and this
+   * switches off on its own, so it is decided from the real viewport, never from the lock call.
+   */
+  const rot = focus && !!img && img.w > img.h && vp.h > vp.w
+  const rotRef = useRef(rot)
+  rotRef.current = rot
+  /** pointer position inside an element in that element's own (un-rotated) pixels */
+  const local = (el: Element, cx: number, cy: number) => {
+    const r = el.getBoundingClientRect()
+    return rotRef.current ? { x: cy - r.top, y: r.right - cx, w: r.height, h: r.width } : { x: cx - r.left, y: cy - r.top, w: r.width, h: r.height }
+  }
+  const enterFocus = () => {
+    setFocus(true)
+    setDrawer(false)
+    void enterLandscape(!!img && img.w > img.h)
+  }
+  const exitFocus = () => {
+    setFocus(false)
+    setDrawer(false)
+    exitLandscape()
+  }
+  useEffect(() => () => exitLandscape(), [])
+  // a phone held sideways has no room for the side panel: open straight into focus mode
+  const autoFocused = useRef(false)
+  useEffect(() => {
+    if (!img) {
+      autoFocused.current = false
+      if (focus) exitFocus()
+      return
+    }
+    if (!autoFocused.current && window.innerHeight <= 560 && window.innerWidth > window.innerHeight) {
+      autoFocused.current = true
+      setFocus(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [img?.src])
+
   // ── zoom & pan: work precisely on a corner or a thin edge
   const viewRef = useRef<HTMLDivElement>(null)
   const [zoom, setZoom] = useState(1)
   const [hand, setHand] = useState(false)
-  const [full, setFull] = useState(false)
   const anchor = useRef<{ fx: number; fy: number; px: number; py: number } | null>(null)
   const zoomTo = (z: number, clientX?: number, clientY?: number) => {
     const v = viewRef.current
     z = Math.min(8, Math.max(1, +z.toFixed(2)))
     if (v) {
-      const r = v.getBoundingClientRect()
-      const px = clientX === undefined ? r.width / 2 : clientX - r.left
-      const py = clientY === undefined ? r.height / 2 : clientY - r.top
+      const c = v.getBoundingClientRect()
+      const q = local(v, clientX ?? c.left + c.width / 2, clientY ?? c.top + c.height / 2)
+      const px = q.x
+      const py = q.y
       anchor.current = { fx: (v.scrollLeft + px) / v.scrollWidth, fy: (v.scrollTop + py) / v.scrollHeight, px, py }
     }
     setZoom(z)
@@ -511,8 +555,9 @@ export default function UploadRoomModal() {
     if (Math.abs(z - zoomRef.current) > 0.02) zoomTo(z, mx, my)
     else {
       const v = viewRef.current!
-      v.scrollLeft -= mx - p.mx
-      v.scrollTop -= my - p.my
+      const [dx, dy] = rotRef.current ? [my - p.my, -(mx - p.mx)] : [mx - p.mx, my - p.my]
+      v.scrollLeft -= dx
+      v.scrollTop -= dy
     }
     p.mx = mx
     p.my = my
@@ -579,9 +624,9 @@ export default function UploadRoomModal() {
   /** the corner layer extends 15% past each photo edge, so floors can run out of the frame */
   const PAD = 0.15
   const toNorm = (e: React.PointerEvent): [number, number] => {
-    const r = svgRef.current!.getBoundingClientRect()
+    const q = local(svgRef.current!, e.clientX, e.clientY)
     const f = (v: number) => Math.max(-1.5, Math.min(2.5, v))
-    return [f(-PAD + (1 + 2 * PAD) * ((e.clientX - r.left) / r.width)), f(-PAD + (1 + 2 * PAD) * ((e.clientY - r.top) / r.height))]
+    return [f(-PAD + (1 + 2 * PAD) * (q.x / q.w)), f(-PAD + (1 + 2 * PAD) * (q.y / q.h))]
   }
 
   useEffect(() => {
@@ -668,14 +713,6 @@ export default function UploadRoomModal() {
       title={editing ? `Adjust surfaces · ${editing.name}` : 'Upload a picture of your room'}
       onClose={close}
       wide="xl"
-      full={full && !!img}
-      headerExtra={
-        img ? (
-          <button className="x" onClick={() => setFull(!full)} title={full ? 'Exit full screen' : 'Full screen'} aria-label={full ? 'Exit full screen' : 'Full screen'}>
-            <Icon name="full" />
-          </button>
-        ) : null
-      }
       footer={
         img ? (
           <>
@@ -796,8 +833,57 @@ export default function UploadRoomModal() {
           </div>
         </div>
       ) : (
-        <div className={`room-editor${full ? ' full' : ''}`}>
+        <div className={`room-editor${focus ? ' focus' : ''}${rot ? ' rot' : ''}`}>
           <div className="editor-main">
+          {focus && (
+            <>
+              <button className="focus-btn exit" onClick={exitFocus} aria-label="Exit full screen" title="Exit full screen">
+                <Icon name="close" size={18} /> Done
+              </button>
+              <button className="focus-btn gear" onClick={() => setDrawer(!drawer)} aria-label="Steps and options" title="Steps and options">
+                <Icon name="settings" size={18} /> {mode === 'objects' ? 'Objects' : mode === 'surfaces' ? 'Surfaces' : 'Layers'}
+              </button>
+              <div className="focus-tools">
+                {mode === 'objects' ? (
+                  <>
+                    <div className="seg">
+                      <button className={objTool === 'paint' ? 'on' : ''} onClick={() => setObjTool('paint')} title="Paint">
+                        <span className="lbl">Paint</span>
+                      </button>
+                      <button className={objTool === 'erase' ? 'on' : ''} onClick={() => setObjTool('erase')} title="Erase">
+                        <span className="lbl">Erase</span>
+                      </button>
+                      <button className={objTool === 'remove' ? 'on' : ''} onClick={() => setObjTool('remove')} title="Remove a whole object">
+                        <span className="lbl">Remove</span>
+                      </button>
+                    </div>
+                    <input className="brush-range" type="range" min={6} max={90} value={brush} onChange={(e) => setBrush(Number(e.target.value))} aria-label="Brush size" title="Brush size" />
+                    <button className="btn sm" disabled={!undoCount} onClick={undo} aria-label="Undo" title="Undo">
+                      <Icon name="undo" size={15} />
+                    </button>
+                  </>
+                ) : mode === 'surfaces' ? (
+                  <>
+                    <select value={active ?? ''} onChange={(e) => setActive(e.target.value)} aria-label="Surface">
+                      {surfaces.map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.label}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="seg">
+                      <button className={tool === 'area' ? 'on' : ''} onClick={() => setTool('area')}>
+                        Area
+                      </button>
+                      <button className={tool === 'perspective' ? 'on' : ''} onClick={() => setTool('perspective')}>
+                        Guide
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </>
+          )}
           <div className="zoom-bar">
             <button className="btn sm" onClick={() => zoomTo(zoom / 1.5)} disabled={zoom <= 1} aria-label="Zoom out" title="Zoom out">
               −
@@ -966,8 +1052,9 @@ export default function UploadRoomModal() {
                   const v = viewRef.current
                   const f = panFrom.current
                   if (!v || !f) return
-                  v.scrollLeft = f.l - (e.clientX - f.x)
-                  v.scrollTop = f.t - (e.clientY - f.y)
+                  const [dx, dy] = rotRef.current ? [e.clientY - f.y, -(e.clientX - f.x)] : [e.clientX - f.x, e.clientY - f.y]
+                  v.scrollLeft = f.l - dx
+                  v.scrollTop = f.t - dy
                 }}
                 onPointerUp={() => (panFrom.current = null)}
                 onPointerCancel={() => (panFrom.current = null)}
@@ -975,8 +1062,22 @@ export default function UploadRoomModal() {
             )}
           </div>
           </div>
+          {!focus && (
+            <button className="fs-btn" onClick={enterFocus} aria-label="Full screen" title="Edit full screen">
+              <Icon name="full" size={18} />
+            </button>
+          )}
           </div>
-          <div className="editor-side">
+          {focus && drawer && <div className="drawer-back" onClick={() => setDrawer(false)} />}
+          <div className={`editor-side${focus && drawer ? ' open' : ''}`}>
+            {focus && (
+              <div className="drawer-head">
+                <b>Steps and options</b>
+                <button className="x" onClick={() => setDrawer(false)} aria-label="Close options">
+                  <Icon name="close" />
+                </button>
+              </div>
+            )}
             <div className="seg">
               <button className={mode === 'surfaces' ? 'on' : ''} onClick={() => setMode('surfaces')}>
                 1. Surfaces

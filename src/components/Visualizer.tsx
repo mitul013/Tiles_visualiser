@@ -8,6 +8,7 @@ import type { Application, LightTheme, SurfaceType } from '../types'
 import ProductPanel from './ProductPanel'
 import SettingsPanel from './SettingsPanel'
 import PhotoScene from './PhotoScene'
+import Preview from './Preview'
 import RoomSelect from './RoomSelect'
 import { addCurrentToCatalog } from './Modals'
 import { downloadDataUrl, Icon, IconBtn, Swatch } from './ui'
@@ -272,6 +273,8 @@ export default function Visualizer({ onClose }: { onClose: () => void }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const t = useT()
   const lang = useStore((s) => s.lang)
+  /** snapshot of the room shown full screen (null = closed) */
+  const [preview, setPreview] = useState<string | null>(null)
   const room = getRoom(roomId)
   const photo = photoRooms.find((r) => r.id === roomId)
 
@@ -329,12 +332,25 @@ export default function Visualizer({ onClose }: { onClose: () => void }) {
                 photo && <PhotoScene room={photo} />
               )}
               <SettingsPanel />
+              {!panorama && (
+                <button
+                  className="preview-btn"
+                  onClick={() => {
+                    const url = useStore.getState().capture?.(true)
+                    if (url) setPreview(url)
+                  }}
+                  title="See the room full screen"
+                >
+                  <Icon name="full" size={16} /> Preview
+                </button>
+              )}
               {panorama && room && <div className="pano-hint">360° view · drag to look around</div>}
             </div>
             <AppliedBar />
           </div>
         </div>
       )}
+      {preview && <Preview src={preview} onClose={() => setPreview(null)} />}
     </div>
   )
 }

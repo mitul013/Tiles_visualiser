@@ -27,8 +27,15 @@ Editing the object layer (step 2 of the editor):
   takes out one whole object with a single tap (it uses the detected kind of each pixel, so removing
   a plant leaves the curtain behind it). No action ever changes the rest of the layer.
 - **Undo** steps back through the last 8 actions.
-- **Zoom** (− / + / Fit, or Ctrl + scroll) with **Move** to drag the zoomed photo, and a
-  **full screen** button in the dialog header, for precise work on corners and thin edges.
+- **Zoom** (− / + / Fit, Ctrl + scroll, or a two-finger pinch) with **Move** to drag the zoomed photo.
+- **Focus mode**: the button in the photo's bottom-right corner fills the screen with the photo. A
+  slim bar keeps the essential tools; the gear opens a drawer with the steps and every other option.
+  A landscape room on a phone held upright is turned sideways (the screen is locked to landscape
+  where the browser allows it, otherwise the view itself is rotated). A phone already held sideways
+  opens the editor in focus mode.
+
+In the visualiser, **Preview** (bottom-right of the room) shows the designed room full screen on any
+device, turned sideways the same way.
 
 ## Measured against the reference
 

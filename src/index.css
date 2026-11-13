@@ -2309,7 +2309,8 @@ input[type='range'] {
     height: 100%;
   }
   .editor-main {
-    position: static;
+    position: relative;
+    top: 0;
     padding: 0;
   }
   .editor-view,
@@ -2444,4 +2445,281 @@ input[type='range'] {
   .modal footer label.inline {
     font-size: 0; /* keep the name field, drop its caption */
   }
+}
+
+/* =====================================================================================
+   Focus mode (room editor) and full-screen preview
+   The photo fills the screen; tools shrink to a slim bar; steps and options sit in a drawer.
+   .rot = the box is drawn turned a quarter turn (a landscape room on a phone held upright,
+   where the browser cannot rotate the screen itself).
+   ===================================================================================== */
+#toast {
+  z-index: 400;
+}
+.editor-main {
+  position: relative;
+}
+.fs-btn,
+.preview-btn {
+  position: absolute;
+  right: 10px;
+  bottom: 12px;
+  z-index: 3;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(18, 23, 26, 0.74);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 42px;
+  min-height: 42px;
+  padding: 0 12px;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+}
+.fs-btn {
+  padding: 0;
+}
+.fs-btn:hover,
+.preview-btn:hover {
+  background: rgba(18, 23, 26, 0.9);
+}
+.room-editor.focus {
+  --fw: 100dvw;
+  --fh: 100dvh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: var(--fw);
+  height: var(--fh);
+  z-index: 300;
+  display: block;
+  background: #12171a;
+  overflow: hidden;
+}
+.room-editor.focus.rot {
+  --fw: 100dvh;
+  --fh: 100dvw;
+  transform-origin: 0 0;
+  transform: translateX(100dvw) rotate(90deg);
+}
+.room-editor.focus .editor-main {
+  position: absolute;
+  inset: 0;
+  top: 0;
+  display: block;
+  padding: 0;
+  background: none;
+}
+.room-editor.focus .editor-view {
+  --avail-h: calc(var(--fh) - 60px);
+  position: absolute;
+  inset: 0 0 60px 0;
+  max-height: none;
+  display: grid;
+  place-items: center;
+  border-radius: 0;
+}
+.room-editor.focus .editor-view.zoomed {
+  display: block;
+  overflow: auto;
+}
+.room-editor.focus .editor-view .editor-stage {
+  width: calc(var(--zoom, 1) * min(88%, var(--avail-h) * var(--ar, 1.5) * 0.84));
+  margin: 0;
+  outline-color: rgba(255, 255, 255, 0.3);
+}
+.room-editor.focus .editor-view.zoomed .editor-stage {
+  margin: calc(5% * var(--zoom, 1));
+}
+.focus-btn {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top));
+  z-index: 5;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #12171a;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+.focus-btn.exit {
+  left: max(8px, env(safe-area-inset-left));
+}
+.focus-btn.gear {
+  right: max(8px, env(safe-area-inset-right));
+}
+.focus-tools,
+.room-editor.focus .zoom-bar {
+  position: absolute;
+  bottom: max(8px, env(safe-area-inset-bottom));
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  color: #fff;
+}
+.focus-tools {
+  left: max(8px, env(safe-area-inset-left));
+}
+.room-editor.focus .zoom-bar {
+  right: max(8px, env(safe-area-inset-right));
+}
+.room-editor.focus .zoom-bar .hint,
+.focus-tools .lbl {
+  display: none;
+}
+.focus-tools .seg {
+  background: rgba(255, 255, 255, 0.16);
+}
+.focus-tools .seg button {
+  color: #fff;
+  min-width: 44px;
+  min-height: 40px;
+}
+.focus-tools .seg button.on {
+  background: #fff;
+  color: #12171a;
+}
+.focus-tools .brush-range {
+  width: 110px;
+}
+.focus-tools select {
+  min-height: 40px;
+  border-radius: 8px;
+  border: 0;
+  padding: 0 8px;
+  max-width: 130px;
+}
+.focus-tools .btn,
+.room-editor.focus .zoom-bar .btn {
+  min-height: 40px;
+  min-width: 40px;
+  justify-content: center;
+}
+.room-editor.focus .editor-side {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(330px, 88%);
+  max-height: none;
+  background: var(--panel);
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  transform: translateX(105%);
+  transition: transform 0.2s ease;
+  z-index: 8;
+  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.4);
+}
+.room-editor.focus .editor-side.open {
+  transform: none;
+}
+.drawer-back {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  background: rgba(0, 0, 0, 0.4);
+}
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+@media (min-width: 1000px) {
+  .focus-tools .lbl {
+    display: inline;
+  }
+}
+/* a phone held upright showing an upright photo: the two bars stack */
+@media (max-width: 640px) {
+  .room-editor.focus:not(.rot) .zoom-bar {
+    bottom: calc(56px + env(safe-area-inset-bottom));
+    left: max(8px, env(safe-area-inset-left));
+    right: auto;
+  }
+  .room-editor.focus:not(.rot) .editor-view {
+    --avail-h: calc(var(--fh) - 170px);
+    inset: 52px 0 112px 0;
+  }
+  .room-editor.focus:not(.rot) .focus-tools .brush-range {
+    width: 84px;
+  }
+}
+
+.preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100dvw;
+  height: 100dvh;
+  z-index: 350;
+  background: #000;
+  cursor: pointer;
+}
+.preview.rot {
+  width: 100dvh;
+  height: 100dvw;
+  transform-origin: 0 0;
+  transform: translateX(100dvw) rotate(90deg);
+}
+.preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+}
+.preview-close {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #12171a;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 0 16px;
+  font-weight: 600;
+  font-size: 14px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+/* focus bars: dark text on the white buttons, readable tool names */
+.focus-tools .btn,
+.room-editor.focus .zoom-bar .btn,
+.focus-tools select {
+  color: #12171a;
+  background: #fff;
+}
+.focus-tools .btn:disabled,
+.room-editor.focus .zoom-bar .btn:disabled {
+  opacity: 0.45;
+}
+.room-editor.focus .zoom-bar .btn.primary {
+  background: var(--gold, #c9a24a);
+  border-color: transparent;
+}
+.focus-tools .lbl {
+  display: inline;
+}
+.focus-tools .seg button {
+  font-size: 12.5px;
+  padding: 6px 9px;
+  white-space: nowrap;
+}
+.room-editor.focus .editor-view .editor-stage {
+  width: calc(var(--zoom, 1) * min(90%, var(--avail-h) * var(--ar, 1.5) * 0.88));
 }
