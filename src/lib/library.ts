@@ -39,8 +39,8 @@ export function loadLibrary(): Promise<LibraryRoom[]> {
   return cache
 }
 
-/** the photo-real demo rooms, in manifest order */
-export const demoRooms = (rooms: LibraryRoom[]) => rooms.filter((r) => r.objMask || r.pano)
+/** the demo rooms, in manifest order: prepared cut-out rooms, 360° rooms, detected photo rooms */
+export const demoRooms = (rooms: LibraryRoom[]) => rooms.filter((r) => r.objMask || r.pano || r.matt)
 const panoUrls = (p: PanoInfo): PanoInfo => ({ ...p, mask: url(p.mask), shade: url(p.shade) })
 
 const flat = (color: string) => {
