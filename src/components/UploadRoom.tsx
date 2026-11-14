@@ -178,7 +178,7 @@ export default function UploadRoomModal() {
       try {
         const det = await detectRoomPhoto(c, (stage, fraction) => setDetecting({ stage, fraction }), { tileOverRugs: overRugs })
         if (!det.surfaces.length) throw new Error('No floor or wall was found in this photo')
-        const surfs: PhotoSurface[] = det.surfaces.map((f) => ({ id: `s-${uid()}`, type: f.type, label: f.label, quad: f.quad, area: f.area, size: f.size }))
+        const surfs: PhotoSurface[] = det.surfaces.map((f) => ({ id: `s-${uid()}`, type: f.type, label: f.label, quad: f.quad, area: f.area, size: f.size, ...(f.openings && { openings: f.openings }) }))
         // open the editor with everything filled in: the user checks it, gives it finishing
         // touches if needed (areas, perspective guide, object brush) and presses "Use this room"
         setImg({ src, w: W, h: H })

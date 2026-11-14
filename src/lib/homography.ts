@@ -188,3 +188,51 @@ export const polyPath = (ctx: CanvasRenderingContext2D, poly: Pt[]) => {
   poly.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)))
   ctx.closePath()
 }
+
+/**
+ * Real area (m²) of a photo-room surface: its outline, clipped to the photo frame, mapped through
+ * the inverse of the perspective guide onto the plane, where the guide quad is a `size[0]` x
+ * `size[1]` metre rectangle. Parts hidden behind furniture count (they get tiled too); parts outside
+ * the photo cannot be measured and do not. Returns null when the outline cannot be mapped.
+ */
+export function surfaceAreaM2(quad: Pt[], outline: Pt[], size: [number, number]): number | null {
+  // Sutherland–Hodgman against the photo frame [0,1]²
+  let poly = outline
+  const edges: [(p: Pt) => boolean, (a: Pt, b: Pt) => Pt][] = [
+    [(p) => p[0] >= 0, (a, b) => [0, a[1] + ((b[1] - a[1]) * (0 - a[0])) / (b[0] - a[0])]],
+    [(p) => p[0] <= 1, (a, b) => [1, a[1] + ((b[1] - a[1]) * (1 - a[0])) / (b[0] - a[0])]],
+    [(p) => p[1] >= 0, (a, b) => [a[0] + ((b[0] - a[0]) * (0 - a[1])) / (b[1] - a[1]), 0]],
+    [(p) => p[1] <= 1, (a, b) => [a[0] + ((b[0] - a[0]) * (1 - a[1])) / (b[1] - a[1]), 1]],
+  ]
+  for (const [inside, cut] of edges) {
+    const out: Pt[] = []
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i]
+      const b = poly[(i + 1) % poly.length]
+      if (inside(b)) {
+        if (!inside(a)) out.push(cut(a, b))
+        out.push(b)
+      } else if (inside(a)) out.push(cut(a, b))
+    }
+    poly = out
+    if (poly.length < 3) return null
+  }
+  const Hi = invert3(squareToQuad(quad))
+  const uv: Pt[] = []
+  for (const [x, y] of poly) {
+    const w = Hi[6] * x + Hi[7] * y + Hi[8]
+    if (!(w > 1e-9) && !(w < -1e-9)) return null
+    uv.push([(Hi[0] * x + Hi[1] * y + Hi[2]) / w, (Hi[3] * x + Hi[4] * y + Hi[5]) / w])
+  }
+  // all points must be on the same side of the horizon (in front of the camera)
+  const ws = poly.map(([x, y]) => Hi[6] * x + Hi[7] * y + Hi[8])
+  if (!(ws.every((w) => w > 0) || ws.every((w) => w < 0))) return null
+  let a = 0
+  for (let i = 0; i < uv.length; i++) {
+    const [x1, y1] = uv[i]
+    const [x2, y2] = uv[(i + 1) % uv.length]
+    a += x1 * y2 - x2 * y1
+  }
+  const m2 = (Math.abs(a) / 2) * size[0] * size[1]
+  return isFinite(m2) && m2 > 0 ? m2 : null
+}

@@ -19,7 +19,7 @@ function designLines(d: Design) {
   return surfaces
     .map((s) => {
       const a = d.applied[s.id]
-      const area = s.size[0] * s.size[1]
+      const area = s.area
       if (!a) return null
       if (a.kind === 'tile') {
         const p = findProduct(a.productId)
@@ -635,7 +635,7 @@ export function ProductModal() {
   // area where this product is applied; otherwise the currently selected surfaces
   const appliedHere = surfaces.filter((s) => { const a = useStore.getState().applied[s.id]; return a?.kind === 'tile' && a.productId === p.id })
   const areaSurfaces = appliedHere.length ? appliedHere : surfaces.filter((s) => selected.includes(s.id))
-  const area = areaSurfaces.reduce((sum, s) => sum + s.size[0] * s.size[1], 0)
+  const area = areaSurfaces.reduce((sum, s) => sum + s.area, 0)
   const r = calculate(p, area || 10)
   return (
     <Modal title="Product details" onClose={close} wide>

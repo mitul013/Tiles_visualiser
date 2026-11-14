@@ -3,6 +3,7 @@ import { createJSONStorage, persist, type StateStorage } from 'zustand/middlewar
 import { del, get, set } from 'idb-keyval'
 import type { Application, CartItem, CatalogEntry, Design, LightTheme, Product, SavedDesign, SurfaceType } from './types'
 import { getRoom } from './data/rooms'
+import { surfaceAreaM2, type Pt } from './lib/homography'
 import { PRODUCTS } from './data/products'
 import { PAINTS } from './data/paints'
 
@@ -19,6 +20,8 @@ export interface PhotoSurface {
    */
   area?: [number, number][]
   size: [number, number]
+  /** share of the area taken by windows / doors (from automatic detection), not tiled */
+  openings?: number
 }
 export interface PhotoRoom {
   id: string
@@ -114,11 +117,17 @@ interface State {
   setCapture: (f: State['capture']) => void
 }
 
+/**
+ * Surfaces of a room with their real area in m² (3D rooms: the modelled size; photo rooms: the
+ * outline measured on the plane through the perspective guide, see surfaceAreaM2).
+ */
 export const surfacesForRoom = (roomId: string, photoRooms: PhotoRoom[]) => {
   const r = getRoom(roomId)
-  if (r) return r.surfaces.map((s) => ({ id: s.id, label: s.label, type: s.type, size: s.size }))
+  if (r) return r.surfaces.map((s) => ({ id: s.id, label: s.label, type: s.type, size: s.size, area: s.size[0] * s.size[1] }))
   const p = photoRooms.find((x) => x.id === roomId)
-  return p ? p.surfaces.map((s) => ({ id: s.id, label: s.label, type: s.type, size: s.size })) : []
+  return p
+    ? p.surfaces.map((s) => ({ id: s.id, label: s.label, type: s.type, size: s.size, area: ((s.area && surfaceAreaM2(s.quad as Pt[], s.area as Pt[], s.size)) || s.size[0] * s.size[1]) * (1 - (s.openings ?? 0)) }))
+    : []
 }
 
 export const useStore = create<State>()(

@@ -25,6 +25,11 @@ export interface DetectedSurface {
   area: P2[]
   /** real size of the guide rectangle in metres */
   size: [number, number]
+  /**
+   * share of the surface's real area taken by windows, doors and curtains (not tiled). Area
+   * estimates use outline area x (1 - openings).
+   */
+  openings?: number
   /** share of the photo this surface visibly covers */
   cover: number
 }
@@ -85,6 +90,8 @@ const C_WALL = 0
 const C_FLOOR = [3, 11, 52] // floor, sidewalk/pavement, path
 const C_CEILING = 5
 const C_RUG = 28
+/** windows, doors, curtains (over windows), screen doors, blinds: openings, never tiled */
+const C_OPENINGS = [8, 14, 18, 58, 63]
 /** the depth network's metres x this = real metres (fallback when no scale network is available) */
 const DEPTH_BIAS = 1.2
 /** input size of the absolute-scale network (its training resolution; smaller loses accuracy) */
@@ -860,6 +867,33 @@ export async function detectRoom(img: { data: Uint8ClampedArray | Uint8Array; wi
         any++
       }
     if (!any) continue
+    // windows, doors and curtains on a wall: their share of the wall's real area (pixels weighted by
+    // the area they cover on the plane, which grows with distance and obliqueness)
+    let openings = 0
+    if (s.type === 'wall') {
+      let tot = 0
+      let open = 0
+      const st = Math.max(1, Math.round(Math.max(W, H) / 400))
+      const pos = (x: number, y: number): V3 => {
+        const r: V3 = [x / f, y / f, 1]
+        const t = s.d / (dot(s.n, r) || 1e-12)
+        return [r[0] * t, r[1] * t, r[2] * t]
+      }
+      for (let y = st >> 1; y < H; y += st)
+        for (let x = st >> 1; x < W; x += st) {
+          if (region[y * W + x] !== s.id) continue
+          const xc = x + 0.5 - W / 2
+          const yc = y + 0.5 - H / 2
+          const p0 = pos(xc, yc)
+          const c = cross(add(pos(xc + 1, yc), p0, -1), add(pos(xc, yc + 1), p0, -1))
+          const a = Math.hypot(c[0], c[1], c[2])
+          if (!isFinite(a)) continue
+          tot += a
+          const k = classMap[Math.min(lh - 1, Math.floor((y * lh) / H)) * lw + Math.min(lw - 1, Math.floor((x * lw) / W))]
+          if (C_OPENINGS.includes(k)) open += a
+        }
+      openings = tot > 0 ? +(open / tot).toFixed(3) : 0
+    }
     // 1px overlap so neighbouring surfaces never leave a hairline of the old photo between them
     const poly = simplify(traceOuter(morph(m, W, H, 1, 'max'), W, H), Math.max(1.2, Math.max(W, H) / 1100))
     if (poly.length < 3) continue
@@ -890,6 +924,7 @@ export async function detectRoom(img: { data: Uint8ClampedArray | Uint8Array; wi
       area,
       size: [real, real],
       cover: +s.cover.toFixed(4),
+      ...(openings > 0.005 && { openings }),
     })
   }
   lap('surfaces')
