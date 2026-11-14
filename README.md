@@ -81,8 +81,8 @@ npm run thumbnails   # renders public/rooms/<id>.jpg with Playwright
 ## Deploy the whole app on your own server
 
 `deploy/docker-compose.yml` runs the web app (Caddy, automatic HTTPS) and the room-detection
-backend together on one machine. Step-by-step guide for Oracle Cloud's free tier:
-[`docs/DEPLOY-ORACLE.md`](docs/DEPLOY-ORACLE.md).
+backend together on one machine. Step-by-step guides: any VPS such as Hostinger or DigitalOcean
+([`docs/DEPLOY-VPS.md`](docs/DEPLOY-VPS.md)), or Oracle Cloud's free tier ([`docs/DEPLOY-ORACLE.md`](docs/DEPLOY-ORACLE.md)).
 
 ## Deploy the web app only (free static hosting)
 
