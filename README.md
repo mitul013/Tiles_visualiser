@@ -47,6 +47,14 @@ The feature set was mapped from the public tilesview.ai visualiser with the
 - **Product details** with size variants, specifications, details PDF
 - **Calculator & cart**: area from surfaces or dimensions (m / ft), waste %, grout, giving pieces, boxes, weight and cost, plus an inquiry form
 
+## Your shop's branding and currency
+
+Edit `public/brand.json` (on a deployed server: `dist/brand.json` or the web image's `/srv/brand.json`):
+shop name, tagline, logo, phone, WhatsApp, email, website, address, **currency** (ISO code such as
+`INR`, `USD`, `AED`) and **locale** (number format such as `en-IN`). The header, page title, prices
+and catalogue PDFs follow it after a reload; no rebuild needed. Product prices in
+`src/data/products.ts` are taken to be in that currency.
+
 ## Room library
 
 The upload dialog has a **Library** tab with ready-to-use photo rooms (`public/library/manifest.json`):

@@ -2723,3 +2723,18 @@ input[type='range'] {
 .room-editor.focus .editor-view .editor-stage {
   width: calc(var(--zoom, 1) * min(90%, var(--avail-h) * var(--ar, 1.5) * 0.88));
 }
+
+/* shop logo from public/brand.json */
+.brand .brand-logo {
+  height: 30px;
+  width: auto;
+  max-width: 150px;
+  object-fit: contain;
+  display: block;
+}
+@media (max-width: 600px) {
+  .brand .brand-logo {
+    height: 24px;
+    max-width: 110px;
+  }
+}

@@ -1,3 +1,4 @@
+import { brand, logoUrl } from '../lib/brand'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Product } from '../types'
 import { getSwatch } from '../lib/tileArt'
@@ -129,4 +130,21 @@ export function downloadDataUrl(url: string, filename: string) {
   a.href = url
   a.download = filename
   a.click()
+}
+
+/** the shop's logo (or the default mark) and name, from public/brand.json */
+export function BrandMark() {
+  const url = logoUrl()
+  return (
+    <div className="brand">
+      {url ? (
+        <img className="brand-logo" src={url} alt="" />
+      ) : (
+        <span className="logo">
+          <Icon name="grid" size={18} />
+        </span>
+      )}
+      {brand.name}
+    </div>
+  )
 }

@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App'
+import { loadBrand } from './lib/brand'
 import { LibGenRenderer, readLibGenRequest, readThumbRequest, ThumbRenderer } from './components/ThumbRenderer'
 
 const thumb = readThumbRequest()
@@ -14,4 +15,7 @@ if (new URLSearchParams(location.search).has('harness')) {
   })
 }
 
-createRoot(document.getElementById('root')!).render(<StrictMode>{libgen ? <LibGenRenderer roomId={libgen} /> : thumb ? <ThumbRenderer roomId={thumb} /> : <App />}</StrictMode>)
+// shop branding and currency first (public/brand.json), then the app
+void loadBrand().finally(() =>
+  createRoot(document.getElementById('root')!).render(<StrictMode>{libgen ? <LibGenRenderer roomId={libgen} /> : thumb ? <ThumbRenderer roomId={thumb} /> : <App />}</StrictMode>),
+)

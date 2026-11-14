@@ -7,7 +7,8 @@ import { applyProduct } from './components/ProductPanel'
 import type { Lang } from './lib/i18n'
 import Visualizer from './components/Visualizer'
 import { ModalHost } from './components/Modals'
-import { Icon } from './components/ui'
+import { BrandMark, Icon } from './components/ui'
+import { brand, contactLines } from './lib/brand'
 
 const base = import.meta.env.BASE_URL
 
@@ -70,12 +71,7 @@ export default function App() {
     <>
       <div className="landing">
         <nav className="nav">
-          <div className="brand">
-            <span className="logo">
-              <Icon name="grid" size={18} />
-            </span>
-            Tiles Visualiser
-          </div>
+          <BrandMark />
           <div className="nav-links">
             <a href="#features">Features</a>
             <a href="#how">How it works</a>
@@ -150,7 +146,7 @@ export default function App() {
             Start designing
           </button>
         </section>
-        <footer className="foot">Tiles Visualiser · a React + three.js demo · runs entirely in your browser</footer>
+        <footer className="foot">{brand.name}{contactLines().length ? ` · ${contactLines().join(' · ')}` : ''}</footer>
       </div>
 
       {open && (

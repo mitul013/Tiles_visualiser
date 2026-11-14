@@ -11,7 +11,7 @@ import PhotoScene from './PhotoScene'
 import Preview from './Preview'
 import RoomSelect from './RoomSelect'
 import { addCurrentToCatalog } from './Modals'
-import { downloadDataUrl, Icon, IconBtn, Swatch } from './ui'
+import { BrandMark, downloadDataUrl, Icon, IconBtn, Swatch } from './ui'
 import { LANGUAGES, useT, type Lang } from '../lib/i18n'
 import { notifyHost } from '../lib/host'
 
@@ -281,12 +281,7 @@ export default function Visualizer({ onClose }: { onClose: () => void }) {
   return (
     <div className={`viz${dark ? ' dark' : ''}`} ref={rootRef}>
       <header className="viz-head">
-        <div className="brand">
-          <span className="logo">
-            <Icon name="grid" size={18} />
-          </span>
-          Tiles Visualiser
-        </div>
+        <BrandMark />
         {view === 'visualizer' && (
           <>
             <button className="btn ghost" onClick={backToRooms}>

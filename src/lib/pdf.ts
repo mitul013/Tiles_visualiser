@@ -8,8 +8,24 @@ import { sizeLabel } from '../data/products'
 import { DEFAULT_SETTINGS, LAYOUTS, renderTiledSurface } from './layout'
 import { shareUrl } from './share'
 import { notifyHost } from './host'
+import { brand, contactLines, logoUrl } from './brand'
 
-const BRAND = 'Tiles Visualiser'
+/** the shop's logo as a PNG data URL (any image format the browser reads), or null */
+async function logoPng(): Promise<{ data: string; ratio: number } | null> {
+  const url = logoUrl()
+  if (!url) return null
+  try {
+    const im = await loadImg(url)
+    const c = document.createElement('canvas')
+    const k = Math.min(1, 600 / Math.max(im.naturalWidth || 600, im.naturalHeight || 600))
+    c.width = Math.max(1, Math.round((im.naturalWidth || 600) * k))
+    c.height = Math.max(1, Math.round((im.naturalHeight || 200) * k))
+    c.getContext('2d')!.drawImage(im, 0, 0, c.width, c.height)
+    return { data: c.toDataURL('image/png'), ratio: c.width / c.height }
+  } catch {
+    return null
+  }
+}
 
 // ---------------------------------------------------------------- design system
 type RGB = [number, number, number]
@@ -142,7 +158,7 @@ const m2 = (n: number) => `${n.toLocaleString(undefined, { maximumFractionDigits
 function footer(k: Kit, page: number, pages: number, dark = false) {
   const { doc, font } = k
   font('regular', 7.5, dark ? [190, 200, 204] : MUTED, 0.2)
-  doc.text(BRAND.toUpperCase(), M, PH - 8)
+  doc.text(brand.name.toUpperCase(), M, PH - 8)
   doc.text(`${page} / ${pages}`, PW - M, PH - 8, { align: 'right' })
   if (!dark) {
     doc.setDrawColor(...LINE)
@@ -159,10 +175,19 @@ async function coverPage(k: Kit, entries: CatalogEntry[], totals: { area: number
   doc.addImage(await cover(entries[0].image, PW / heroH), 'JPEG', 0, 0, PW, heroH)
   // soft fade from the photo into the ink panel
   for (let i = 0; i < 14; i++) alpha(0.06 + i * 0.065, () => (fill(INK), doc.rect(0, heroH - 28 + i * 2, PW, 2, 'F')))
-  fill(GOLD)
-  doc.rect(M, 26, 18, 1.2, 'F')
-  font('semibold', 8, WHITE, 1.4)
-  alpha(0.92, () => doc.text(BRAND.toUpperCase(), M, 22))
+  const logo = await logoPng()
+  if (logo) {
+    const h = 12
+    const w = Math.min(70, h * logo.ratio)
+    fill(WHITE)
+    alpha(0.94, () => doc.roundedRect(M - 3, 13, w + 6, h + 6, 3, 3, 'F'))
+    doc.addImage(logo.data, 'PNG', M, 16, w, h)
+  } else {
+    fill(GOLD)
+    doc.rect(M, 26, 18, 1.2, 'F')
+    font('semibold', 8, WHITE, 1.4)
+    alpha(0.92, () => doc.text(brand.name.toUpperCase(), M, 22))
+  }
   font('semibold', 9, GOLD, 1.8)
   doc.text('TILE SELECTION', M, heroH + 12)
   font('xbold', 34, WHITE, -0.4)
@@ -405,6 +430,20 @@ function summaryPage(k: Kit, all: Line[]) {
   font('xbold', 20, GOLD)
   doc.text(money(groups.reduce((a, g) => a + g.cost, 0)), PW - M - 8, y + 15.5, { align: 'right' })
   y += 34
+  const contact = contactLines()
+  if (contact.length) {
+    fill(WHITE)
+    doc.setDrawColor(...LINE)
+    const ch = 21 + contact.length * 5.5
+    doc.roundedRect(M, y, PW - 2 * M, ch, 3, 3, 'FD')
+    font('semibold', 7.5, GOLD, 1.4)
+    doc.text('READY TO ORDER?', M + 8, y + 9)
+    font('semibold', 12, TEXT)
+    doc.text(`Contact ${brand.name}`, M + 8, y + 16)
+    font('regular', 9, INK_2)
+    contact.forEach((c, i) => doc.text(c, M + 8, y + 23 + i * 5.5))
+    y += ch + 8
+  }
   font('regular', 7.5, MUTED)
   doc.text(
     doc.splitTextToSize(
