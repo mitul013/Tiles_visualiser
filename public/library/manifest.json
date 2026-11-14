@@ -446,7 +446,7 @@
   },
   {
    "id": "lib-pano-lebombo",
-   "name": "Sunlit Open Living (360°)",
+   "name": "Sunlit Open Living (360\u00b0)",
    "category": "Living Room",
    "width": 4096,
    "height": 2048,
@@ -534,11 +534,12 @@
       4.91
      ]
     }
-   ]
+   ],
+   "hidden": true
   },
   {
    "id": "lib-pano-hotel",
-   "name": "Boutique Hotel Suite (360°)",
+   "name": "Boutique Hotel Suite (360\u00b0)",
    "category": "Bedroom",
    "width": 4096,
    "height": 2048,
@@ -626,11 +627,12 @@
       2.59
      ]
     }
-   ]
+   ],
+   "hidden": true
   },
   {
    "id": "lib-pano-seaview",
-   "name": "Seaview Bedroom Suite (360°)",
+   "name": "Seaview Bedroom Suite (360\u00b0)",
    "category": "Bedroom",
    "width": 4096,
    "height": 2048,
@@ -718,7 +720,8 @@
       1.47
      ]
     }
-   ]
+   ],
+   "hidden": true
   },
   {
    "id": "lib-living-tv",

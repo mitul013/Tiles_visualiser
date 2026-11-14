@@ -21,6 +21,8 @@ export interface LibraryRoom {
   glossy?: string
   /** 360° room: original is the equirectangular panorama (scripts/pano/build.ts) */
   pano?: PanoInfo
+  /** kept in the library (shared links still open it) but not listed */
+  hidden?: boolean
   surfaces: PhotoSurface[]
 }
 
@@ -40,7 +42,7 @@ export function loadLibrary(): Promise<LibraryRoom[]> {
 }
 
 /** the demo rooms, in manifest order: prepared cut-out rooms, 360° rooms, detected photo rooms */
-export const demoRooms = (rooms: LibraryRoom[]) => rooms.filter((r) => r.objMask || r.pano || r.matt)
+export const demoRooms = (rooms: LibraryRoom[]) => rooms.filter((r) => !r.hidden && (r.objMask || r.pano || r.matt))
 const panoUrls = (p: PanoInfo): PanoInfo => ({ ...p, mask: url(p.mask), shade: url(p.shade) })
 
 const flat = (color: string) => {
