@@ -73,6 +73,8 @@ interface State {
   saved: SavedDesign[]
   cart: CartItem[]
   history: string[]
+  /** products the customer hearted */
+  favs: string[]
   originalShot: string | null
   /** set by the active scene: returns a JPEG of the current view */
   capture: ((hd?: boolean) => string) | null
@@ -113,6 +115,7 @@ interface State {
   setCartArea: (productId: string, area: number) => void
   clearCart: () => void
   pushHistory: (id: string) => void
+  toggleFav: (id: string) => void
   setOriginalShot: (s: string | null) => void
   setCapture: (f: State['capture']) => void
 }
@@ -151,6 +154,7 @@ export const useStore = create<State>()(
       saved: [],
       cart: [],
       history: [],
+      favs: [],
       originalShot: null,
       capture: null,
       lang: 'en',
@@ -223,6 +227,7 @@ export const useStore = create<State>()(
       removeFromCart: (pid) => setS({ cart: getS().cart.filter((c) => c.productId !== pid) }),
       setCartArea: (pid, a) => setS({ cart: getS().cart.map((c) => (c.productId === pid ? { ...c, areaM2: a } : c)) }),
       clearCart: () => setS({ cart: [] }),
+      toggleFav: (id) => setS({ favs: getS().favs.includes(id) ? getS().favs.filter((f) => f !== id) : [id, ...getS().favs] }),
       pushHistory: (id) => setS({ history: [id, ...getS().history.filter((h) => h !== id)].slice(0, 30) }),
       setOriginalShot: (originalShot) => setS({ originalShot }),
       setCapture: (capture) => setS({ capture }),
@@ -239,6 +244,7 @@ export const useStore = create<State>()(
         saved: s.saved,
         cart: s.cart,
         history: s.history,
+        favs: s.favs,
         lang: s.lang,
         feedback: s.feedback,
       }),

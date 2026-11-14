@@ -7,6 +7,7 @@ import { DEFAULT_SETTINGS } from '../lib/layout'
 import { Icon, Swatch, toast } from './ui'
 import { useT } from '../lib/i18n'
 import { notifyHost } from '../lib/host'
+import { money } from '../lib/calc'
 
 type Tab = 'tiles' | 'paint' | 'upload' | 'applied'
 type Sort = 'new' | 'old' | 'az' | 'za' | 'size'
@@ -48,6 +49,24 @@ export function applyProduct(p: Product) {
   if (skipped > 0) toast(`Applied to ${targets.length} surface(s); ${skipped} not suitable`)
 }
 
+/** Paint the selected walls / ceilings. */
+export function applyPaint(paintId: string) {
+  const s = useStore.getState()
+  const surfaces = surfacesForRoom(s.roomId, s.photoRooms)
+  const targets = s.selected.filter((id) => ['wall', 'ceiling'].includes(surfaces.find((x) => x.id === id)?.type ?? ''))
+  if (!targets.length) return toast('Paint can be applied to walls and ceilings — select one')
+  s.apply(targets, { kind: 'paint', paintId, finish: 'matt' })
+}
+
+/** Products that suit this room and the selected surfaces, newest first. */
+export function suitableProducts(all: Product[], surfaces: { id: string; type: SurfaceType }[], selected: string[]) {
+  const roomTypes = new Set(surfaces.map((x) => x.type))
+  const selTypes = new Set(selected.map((id) => surfaces.find((x) => x.id === id)?.type).filter(Boolean) as SurfaceType[])
+  return all
+    .filter((p) => !p.custom && p.application.some((t) => roomTypes.has(t)) && (!selTypes.size || [...selTypes].every((t) => p.application.includes(t))))
+    .sort((a, b) => Number(!!b.isNew) - Number(!!a.isNew) || b.createdAt - a.createdAt)
+}
+
 export default function ProductPanel() {
   const t = useT()
   const all = useAllProducts()
@@ -55,7 +74,6 @@ export default function ProductPanel() {
   const roomId = useStore((s) => s.roomId)
   const photoRooms = useStore((s) => s.photoRooms)
   const applied = useStore((s) => s.applied)
-  const apply = useStore((s) => s.apply)
   const showProduct = useStore((s) => s.showProduct)
   const setModal = useStore((s) => s.setModal)
   const history = useStore((s) => s.history)
@@ -126,7 +144,7 @@ export default function ProductPanel() {
         </div>
         {view === 'list' && (
           <div className="pmeta">
-            {p.material} · ${p.price}/m² · {p.sku}
+            {p.material} · {money(p.price)}/m² · {p.sku}
           </div>
         )}
       </div>
@@ -301,11 +319,7 @@ export default function ProductPanel() {
                 <button
                   key={p.id}
                   className={`paint${on ? ' on' : ''}`}
-                  onClick={() => {
-                    const targets = selected.filter((id) => ['wall', 'ceiling'].includes(surfaces.find((s) => s.id === id)?.type ?? ''))
-                    if (!targets.length) return toast('Paint can be applied to walls and ceilings — select one')
-                    apply(targets, { kind: 'paint', paintId: p.id, finish: 'matt' })
-                  }}
+                    onClick={() => applyPaint(p.id)}
                 >
                   <i style={{ background: p.hex }} />
                   <span>{p.name}</span>

@@ -38,6 +38,7 @@ export async function loadBrand() {
         if (typeof v === 'string' && v.trim()) brand[k] = v.trim()
       }
       formatter = null
+      roundFormatter = null
     }
   } catch {
     // keep the defaults
@@ -58,6 +59,18 @@ export function formatMoney(n: number) {
       formatter = new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' })
     }
   return formatter.format(n)
+}
+
+let roundFormatter: Intl.NumberFormat | null = null
+/** a price without paise / cents, for tight spots (product cards) */
+export function formatMoneyRound(n: number) {
+  if (!roundFormatter)
+    try {
+      roundFormatter = new Intl.NumberFormat(brand.locale || undefined, { style: 'currency', currency: brand.currency || 'USD', maximumFractionDigits: 0 })
+    } catch {
+      roundFormatter = new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+    }
+  return roundFormatter.format(n)
 }
 
 /** contact lines that are filled in, for PDFs and the page footer */

@@ -44,7 +44,41 @@ async function surfaceImage(app: Application, size: [number, number], maxTex = 1
   return c
 }
 
-export default function PhotoScene({ room }: { room: PhotoRoom }) {
+/** a point to put a surface's label on: the middle of the part of its outline inside the photo */
+function labelPoint(poly: Pt[], W: number, H: number): Pt {
+  let pts = poly
+  // clip to the frame (Sutherland–Hodgman against the four edges)
+  const edges: [(p: Pt) => boolean, (a: Pt, b: Pt) => Pt][] = [
+    [(p) => p[0] >= 0, (a, b) => { const t = a[0] / (a[0] - b[0]); return [0, a[1] + t * (b[1] - a[1])] }],
+    [(p) => p[0] <= W, (a, b) => { const t = (W - a[0]) / (b[0] - a[0]); return [W, a[1] + t * (b[1] - a[1])] }],
+    [(p) => p[1] >= 0, (a, b) => { const t = a[1] / (a[1] - b[1]); return [a[0] + t * (b[0] - a[0]), 0] }],
+    [(p) => p[1] <= H, (a, b) => { const t = (H - a[1]) / (b[1] - a[1]); return [a[0] + t * (b[0] - a[0]), H] }],
+  ]
+  for (const [inside, cut] of edges) {
+    const out: Pt[] = []
+    pts.forEach((cur, i) => {
+      const prev = pts[(i + pts.length - 1) % pts.length]
+      if (inside(cur)) {
+        if (!inside(prev)) out.push(cut(prev, cur))
+        out.push(cur)
+      } else if (inside(prev)) out.push(cut(prev, cur))
+    })
+    pts = out
+    if (!pts.length) return [W / 2, H / 2]
+  }
+  let a = 0, cx = 0, cy = 0
+  pts.forEach((p, i) => {
+    const q = pts[(i + 1) % pts.length]
+    const k = p[0] * q[1] - q[0] * p[1]
+    a += k
+    cx += (p[0] + q[0]) * k
+    cy += (p[1] + q[1]) * k
+  })
+  const c: Pt = Math.abs(a) > 1e-6 ? [cx / (3 * a), cy / (3 * a)] : pts[0]
+  return pointInQuad(c, pts) ? c : [pts.reduce((s, p) => s + p[0], 0) / pts.length, pts.reduce((s, p) => s + p[1], 0) / pts.length]
+}
+
+export default function PhotoScene({ room, pins = false }: { room: PhotoRoom; pins?: boolean }) {
   const applied = useStore((s) => s.applied)
   const selected = useStore((s) => s.selected)
   const select = useStore((s) => s.select)
@@ -180,12 +214,17 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
       quadPath(ctx, s.outline)
       ctx.lineWidth = Math.max(2, W / 400)
       ctx.setLineDash(sel ? [] : [10, 8])
-      ctx.strokeStyle = sel ? '#1e88ff' : 'rgba(255,255,255,0.9)'
+      ctx.strokeStyle = pins ? 'rgba(255,255,255,0.95)' : sel ? '#1e88ff' : 'rgba(255,255,255,0.9)'
       ctx.stroke()
       if (sel) {
-        ctx.fillStyle = 'rgba(30,136,255,0.08)'
+        ctx.fillStyle = pins ? 'rgba(255,255,255,0.14)' : 'rgba(30,136,255,0.08)'
         ctx.fill()
       }
+    }
+    // with labels on the photo, the outline only flashes to show what was picked
+    if (pins) {
+      const id = setTimeout(() => ctx.clearRect(0, 0, W, H), 900)
+      return () => clearTimeout(id)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, hover, room.id])
@@ -209,7 +248,7 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
 
   return (
     <div className="scene-wrap photo">
-      <div className="photo-stage" style={{ aspectRatio: `${W} / ${H}` }}>
+      <div className="photo-stage" style={{ aspectRatio: `${W} / ${H}`, ['--ar' as string]: W / H }}>
         <canvas ref={canvasRef} width={W} height={H} />
         <canvas
           ref={overlayRef}
@@ -227,8 +266,22 @@ export default function PhotoScene({ room }: { room: PhotoRoom }) {
           }}
           style={{ cursor: hover ? 'pointer' : 'default' }}
         />
+        {pins &&
+          quads.map((s, i) => {
+            let [x, y] = labelPoint(s.outline, W, H)
+            // keep labels apart when two surfaces' middles are close
+            for (const o of quads.slice(0, i)) {
+              const [ox, oy] = labelPoint(o.outline, W, H)
+              if (Math.abs(ox - x) < W * 0.14 && Math.abs(oy - y) < H * 0.07) y = Math.min(H * 0.95, oy + H * 0.08)
+            }
+            return (
+              <button key={s.id} className={`surf-pin${selected.includes(s.id) ? ' on' : ''}`} style={{ left: `${(x / W) * 100}%`, top: `${(y / H) * 100}%` }} onClick={() => select([s.id])}>
+                {s.label}
+              </button>
+            )
+          })}
       </div>
-      {hover && <div className="hover-tag">{room.surfaces.find((s) => s.id === hover)?.label} · click to select</div>}
+      {hover && !pins && <div className="hover-tag">{room.surfaces.find((s) => s.id === hover)?.label} · click to select</div>}
     </div>
   )
 }

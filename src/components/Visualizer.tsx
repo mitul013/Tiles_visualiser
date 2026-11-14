@@ -14,6 +14,8 @@ import { addCurrentToCatalog } from './Modals'
 import { BrandMark, downloadDataUrl, Icon, IconBtn, Swatch } from './ui'
 import { LANGUAGES, useT, type Lang } from '../lib/i18n'
 import { notifyHost } from '../lib/host'
+import { PHONE_PORTRAIT, useMedia } from '../lib/useMedia'
+import MobileStudio from './MobileStudio'
 
 const Scene3D = lazy(() => import('./Scene3D'))
 
@@ -237,7 +239,7 @@ function AppliedBar() {
   }
   const area = selected.reduce((sum, id) => {
     const s = surfaces.find((x) => x.id === id)
-    return sum + (s ? s.size[0] * s.size[1] : 0)
+    return sum + (s ? s.area : 0)
   }, 0)
   return (
     <div className="applied-bar">
@@ -277,6 +279,14 @@ export default function Visualizer({ onClose }: { onClose: () => void }) {
   const [preview, setPreview] = useState<string | null>(null)
   const room = getRoom(roomId)
   const photo = photoRooms.find((r) => r.id === roomId)
+  const phone = useMedia(PHONE_PORTRAIT)
+
+  if (phone && view === 'visualizer' && (room || photo))
+    return (
+      <div className={`viz${dark ? ' dark' : ''}`} ref={rootRef}>
+        <MobileStudio onClose={onClose} />
+      </div>
+    )
 
   return (
     <div className={`viz${dark ? ' dark' : ''}`} ref={rootRef}>

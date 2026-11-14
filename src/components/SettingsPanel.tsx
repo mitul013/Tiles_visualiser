@@ -8,13 +8,15 @@ import { useT } from '../lib/i18n'
 const SPARKLES = ['#d4af37', '#c0c0c0', '#b87333', '#7fb7ff', '#ff8fc8']
 
 /** Layout / rotation / grout / finish controls for the selected tiled surfaces. */
-export default function SettingsPanel() {
+export default function SettingsPanel({ embedded = false }: { embedded?: boolean }) {
   const t = useT()
   const selected = useStore((s) => s.selected)
   const applied = useStore((s) => s.applied)
   const apply = useStore((s) => s.apply)
   // on phones the panel starts folded so it does not cover the room
-  const [open, setOpen] = useState(() => typeof window === 'undefined' || window.matchMedia('(min-width: 901px) and (min-height: 561px)').matches)
+  const [folded, setOpen] = useState(() => typeof window === 'undefined' || window.matchMedia('(min-width: 901px) and (min-height: 561px)').matches)
+  // inside the phone layout's bottom sheet: always open, no header
+  const open = embedded || folded
 
   const tiled = selected.filter((id) => applied[id]?.kind === 'tile')
   const paints = selected.filter((id) => applied[id]?.kind === 'paint')
@@ -28,11 +30,13 @@ export default function SettingsPanel() {
     apply(tiled, (prev) => (prev?.kind === 'tile' ? { ...prev, settings: { ...prev.settings, ...patch } } : prev!))
 
   return (
-    <div className={`settings-panel${open ? '' : ' closed'}`}>
-      <button className="sp-head" onClick={() => setOpen(!open)}>
-        <Icon name="settings" size={16} /> {t('Settings')}{product ? ` · ${product.name}` : ''}
-        <span className="chev">{open ? '–' : '+'}</span>
-      </button>
+    <div className={`settings-panel${open ? '' : ' closed'}${embedded ? ' embedded' : ''}`}>
+      {!embedded && (
+        <button className="sp-head" onClick={() => setOpen(!open)}>
+          <Icon name="settings" size={16} /> {t('Settings')}{product ? ` · ${product.name}` : ''}
+          <span className="chev">{open ? '–' : '+'}</span>
+        </button>
+      )}
       {open && st && product && ['Wallpaper', 'Panel', 'Rug'].includes(product.material) && (
         <div className="sp-body">
           <label>{t('Surface finish')}</label>
@@ -140,7 +144,7 @@ export default function SettingsPanel() {
   )
 }
 
-function LayoutIcon({ id }: { id: string }) {
+export function LayoutIcon({ id }: { id: string }) {
   const s = { stroke: 'currentColor', strokeWidth: 1.4, fill: 'none' }
   const r = (x: number, y: number, w: number, h: number, k: string | number, fill?: boolean) => <rect key={k} x={x} y={y} width={w} height={h} {...s} fill={fill ? 'currentColor' : 'none'} fillOpacity={fill ? 0.35 : 0} />
   let els: React.ReactNode[] = []
