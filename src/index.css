@@ -1835,7 +1835,7 @@ input[type='range'] {
     grid-template-columns: repeat(3, 1fr);
   }
   .room-title,
-  .brand {
+  .viz-head .brand {
     display: none;
   }
   .viz-head {
@@ -2268,7 +2268,7 @@ input[type='range'] {
     order: 0;
     flex: 1 1 0;
   }
-  .brand,
+  .viz-head .brand,
   .room-title {
     display: none;
   }
@@ -2726,7 +2726,7 @@ input[type='range'] {
 
 /* shop logo from public/brand.json */
 .brand .brand-logo {
-  height: 30px;
+  height: 44px;
   width: auto;
   max-width: 150px;
   object-fit: contain;
@@ -2734,7 +2734,7 @@ input[type='range'] {
 }
 @media (max-width: 600px) {
   .brand .brand-logo {
-    height: 24px;
+    height: 36px;
     max-width: 110px;
   }
 }
