@@ -16,6 +16,7 @@ import type { Application, LightTheme, Product, SurfaceType } from '../types'
 import ProductPanel, { applyPaint, applyProduct, suitableProducts } from './ProductPanel'
 import SettingsPanel, { LayoutIcon } from './SettingsPanel'
 import PhotoScene from './PhotoScene'
+import PanoScene from './PanoScene'
 import Preview from './Preview'
 import { addCurrentToCatalog } from './Modals'
 import { downloadDataUrl, Icon, Swatch } from './ui'
@@ -135,7 +136,7 @@ export default function MobileStudio({ onClose }: { onClose: () => void }) {
   const idsOf = (ty: SurfaceType) => surfaces.filter((x) => x.type === ty).map((x) => x.id)
   const same = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x))
   // photos carry their labels on the surfaces; the chip row is only needed for groups and 3D rooms
-  const showChips = !!room || types.some((ty) => idsOf(ty).length > 1)
+  const showChips = !!room || !!photo?.pano || types.some((ty) => idsOf(ty).length > 1)
 
   // what is on the selected surfaces
   const tiled = s.selected.filter((id) => s.applied[id]?.kind === 'tile')
@@ -220,9 +221,9 @@ export default function MobileStudio({ onClose }: { onClose: () => void }) {
               <Scene3D room={room} />
             </Suspense>
           ) : (
-            photo && <PhotoScene room={photo} pins />
+            photo && (photo.pano ? <PanoScene room={photo} /> : <PhotoScene room={photo} pins />)
           )}
-          {peek && s.originalShot && <img className={`ms-original${room ? ' full' : ''}`} src={s.originalShot} alt="" />}
+          {peek && s.originalShot && <img className={`ms-original${room || photo?.pano ? ' full' : ''}`} src={s.originalShot} alt="" />}
           {peek && <span className="ms-peek-tag">Original</span>}
         </div>
         {showChips && (
@@ -424,7 +425,7 @@ export default function MobileStudio({ onClose }: { onClose: () => void }) {
             <button onClick={menu(s.reset)}>
               <Icon name="reset" /> {t('Reset')}
             </button>
-            {photo && (
+            {photo && !photo.pano && (
               <button onClick={menu(() => s.editSurfaces(s.roomId))}>
                 <Icon name="layers" /> Edit surfaces
               </button>

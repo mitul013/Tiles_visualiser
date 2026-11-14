@@ -5,7 +5,7 @@
  *   generated from the photo, as for an uploaded room. These are the demo rooms.
  * - photo + prepared matt / glossy cut-outs (scripts/library.cjs or hand-made)
  */
-import { useStore, type PhotoSurface } from '../store'
+import { useStore, type PanoInfo, type PhotoSurface } from '../store'
 
 export interface LibraryRoom {
   id: string
@@ -19,6 +19,8 @@ export interface LibraryRoom {
   objMask?: string
   matt?: string
   glossy?: string
+  /** 360° room: original is the equirectangular panorama (scripts/pano/build.ts) */
+  pano?: PanoInfo
   surfaces: PhotoSurface[]
 }
 
@@ -38,7 +40,8 @@ export function loadLibrary(): Promise<LibraryRoom[]> {
 }
 
 /** the photo-real demo rooms, in manifest order */
-export const demoRooms = (rooms: LibraryRoom[]) => rooms.filter((r) => r.objMask)
+export const demoRooms = (rooms: LibraryRoom[]) => rooms.filter((r) => r.objMask || r.pano)
+const panoUrls = (p: PanoInfo): PanoInfo => ({ ...p, mask: url(p.mask), shade: url(p.shade) })
 
 const flat = (color: string) => {
   const c = document.createElement('canvas')
@@ -53,10 +56,7 @@ const flat = (color: string) => {
 export function ensureLibraryRoom(r: LibraryRoom) {
   const st = useStore.getState()
   if (st.photoRooms.some((x) => x.id === r.id)) {
-    st.updatePhotoRoom(r.id, {
-      surfaces: r.surfaces,
-      ...(r.objMask ? { objMask: url(r.objMask) } : {}),
-    })
+    st.updatePhotoRoom(r.id, { surfaces: r.surfaces, ...(r.objMask ? { objMask: url(r.objMask) } : {}), ...(r.pano ? { pano: panoUrls(r.pano) } : {}) })
     return
   }
   st.addPhotoRoom({
@@ -66,7 +66,9 @@ export function ensureLibraryRoom(r: LibraryRoom) {
     width: r.width,
     height: r.height,
     surfaces: r.surfaces,
-    ...(r.objMask
+    ...(r.pano
+      ? { pano: panoUrls(r.pano) }
+      : r.objMask
       ? { objMask: url(r.objMask), auto: true }
       : // the cut-out's own semi-transparent pixels light the tiles: generated light maps stay neutral
         {

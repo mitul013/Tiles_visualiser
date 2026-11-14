@@ -22,8 +22,22 @@ export interface PhotoSurface {
   size: [number, number]
   /** share of the area taken by windows / doors (from automatic detection), not tiled */
   openings?: number
+  /** 360° rooms: which face of the room box this surface is */
+  face?: PanoFace
+}
+export type PanoFace = 'floor' | 'ceiling' | 'x0' | 'x1' | 'z0' | 'z1'
+/** a 360° room: equirectangular photo + masks + the room fitted as a box (metres, camera at the origin) */
+export interface PanoInfo {
+  mask: string
+  shade: string
+  box: { phi: number; x0: number; x1: number; z0: number; z1: number; h: number; H: number }
+  /** initial view direction, degrees */
+  yaw: number
+  source?: string
 }
 export interface PhotoRoom {
+  /** set for 360° rooms (image is then the equirectangular panorama) */
+  pano?: PanoInfo
   id: string
   name: string
   image: string

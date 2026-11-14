@@ -22,7 +22,7 @@ export default function RoomSelect() {
   useEffect(() => {
     void loadLibrary().then((rooms) => setDemos(demoRooms(rooms)))
   }, [])
-  const categories = ['All', ...new Set((demos ?? []).map((r) => r.category))]
+  const categories = ['All', ...((demos ?? []).some((r) => r.pano) ? ['360°'] : []), ...new Set((demos ?? []).map((r) => r.category))]
   const myRooms = photoRooms.filter((r) => !r.id.startsWith('lib-'))
   const openDemo = (r: LibraryRoom) => {
     ensureLibraryRoom(r)
@@ -98,11 +98,12 @@ export default function RoomSelect() {
         <div className="room-grid">
           {demos === null && <p className="hint">Loading rooms…</p>}
           {demos
-            ?.filter((r) => cat === 'All' || r.category === cat)
+            ?.filter((r) => cat === 'All' || r.category === cat || (cat === '360°' && r.pano))
             .map((r) => (
               <div key={r.id} className="room-card" onClick={() => openDemo(r)}>
                 <img src={libraryThumb(r)} alt={r.name} loading="lazy" />
                 <span className="rc-cat">{r.category}</span>
+                {r.pano && <span className="rc-360">360°</span>}
                 <div className="rc-foot">
                   <b>{r.name}</b>
                   <small>{TYPE_COUNT(r)}</small>

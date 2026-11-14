@@ -4895,6 +4895,282 @@
     }
    ],
    "thumb": "library/bathroom-spa/thumb.webp"
+  },
+  {
+   "id": "lib-pano-lebombo",
+   "name": "Sunlit Open Living (360\u00b0)",
+   "category": "Living Room",
+   "width": 4096,
+   "height": 2048,
+   "original": "library/pano-lebombo/pano.webp",
+   "thumb": "library/pano-lebombo/thumb.webp",
+   "pano": {
+    "mask": "library/pano-lebombo/mask.webp",
+    "shade": "library/pano-lebombo/shade.webp",
+    "box": {
+     "phi": -0.459,
+     "x0": -2.514,
+     "x1": 2.831,
+     "z0": -2.846,
+     "z1": 2.06,
+     "h": 1.507,
+     "H": 3.4
+    },
+    "yaw": 0,
+    "source": "Poly Haven (CC0)"
+   },
+   "surfaces": [
+    {
+     "id": "s-pymcge2m",
+     "label": "Floor",
+     "type": "floor",
+     "face": "floor",
+     "quad": [],
+     "size": [
+      5.34,
+      4.91
+     ]
+    },
+    {
+     "id": "s-c0055d6k",
+     "label": "Wall 1",
+     "type": "wall",
+     "face": "x0",
+     "quad": [],
+     "size": [
+      4.91,
+      3.4
+     ]
+    },
+    {
+     "id": "s-gzn96d37",
+     "label": "Wall 2",
+     "type": "wall",
+     "face": "z1",
+     "quad": [],
+     "size": [
+      5.34,
+      3.4
+     ]
+    },
+    {
+     "id": "s-a89is55a",
+     "label": "Wall 3",
+     "type": "wall",
+     "face": "x1",
+     "quad": [],
+     "size": [
+      4.91,
+      3.4
+     ]
+    },
+    {
+     "id": "s-ntgjaiuw",
+     "label": "Wall 4",
+     "type": "wall",
+     "face": "z0",
+     "quad": [],
+     "size": [
+      5.34,
+      3.4
+     ]
+    },
+    {
+     "id": "s-2aiwm96a",
+     "label": "Ceiling",
+     "type": "ceiling",
+     "face": "ceiling",
+     "quad": [],
+     "size": [
+      5.34,
+      4.91
+     ]
+    }
+   ]
+  },
+  {
+   "id": "lib-pano-hotel",
+   "name": "Boutique Hotel Suite (360\u00b0)",
+   "category": "Bedroom",
+   "width": 4096,
+   "height": 2048,
+   "original": "library/pano-hotel/pano.webp",
+   "thumb": "library/pano-hotel/thumb.webp",
+   "pano": {
+    "mask": "library/pano-hotel/mask.webp",
+    "shade": "library/pano-hotel/shade.webp",
+    "box": {
+     "phi": -0.577,
+     "x0": -1.496,
+     "x1": 2.285,
+     "z0": -1.611,
+     "z1": 0.975,
+     "h": 1.6,
+     "H": 3.022
+    },
+    "yaw": 0,
+    "source": "Poly Haven (CC0)"
+   },
+   "surfaces": [
+    {
+     "id": "s-beiplew1",
+     "label": "Floor",
+     "type": "floor",
+     "face": "floor",
+     "quad": [],
+     "size": [
+      3.78,
+      2.59
+     ]
+    },
+    {
+     "id": "s-3c9u8nbe",
+     "label": "Wall 1",
+     "type": "wall",
+     "face": "x0",
+     "quad": [],
+     "size": [
+      2.59,
+      3.02
+     ]
+    },
+    {
+     "id": "s-pvcwkxoq",
+     "label": "Wall 2",
+     "type": "wall",
+     "face": "z1",
+     "quad": [],
+     "size": [
+      3.78,
+      3.02
+     ]
+    },
+    {
+     "id": "s-ueoymz32",
+     "label": "Wall 3",
+     "type": "wall",
+     "face": "x1",
+     "quad": [],
+     "size": [
+      2.59,
+      3.02
+     ]
+    },
+    {
+     "id": "s-7hyo3031",
+     "label": "Wall 4",
+     "type": "wall",
+     "face": "z0",
+     "quad": [],
+     "size": [
+      3.78,
+      3.02
+     ]
+    },
+    {
+     "id": "s-i4w41b6b",
+     "label": "Ceiling",
+     "type": "ceiling",
+     "face": "ceiling",
+     "quad": [],
+     "size": [
+      3.78,
+      2.59
+     ]
+    }
+   ]
+  },
+  {
+   "id": "lib-pano-seaview",
+   "name": "Seaview Bedroom Suite (360\u00b0)",
+   "category": "Bedroom",
+   "width": 4096,
+   "height": 2048,
+   "original": "library/pano-seaview/pano.webp",
+   "thumb": "library/pano-seaview/thumb.webp",
+   "pano": {
+    "mask": "library/pano-seaview/mask.webp",
+    "shade": "library/pano-seaview/shade.webp",
+    "box": {
+     "phi": -0.619,
+     "x0": -1.62,
+     "x1": 2.854,
+     "z0": -1.153,
+     "z1": 0.321,
+     "h": 1.6,
+     "H": 2.55
+    },
+    "yaw": 0,
+    "source": "Poly Haven (CC0)"
+   },
+   "surfaces": [
+    {
+     "id": "s-322r2qgf",
+     "label": "Floor",
+     "type": "floor",
+     "face": "floor",
+     "quad": [],
+     "size": [
+      4.47,
+      1.47
+     ]
+    },
+    {
+     "id": "s-ivd9ejy1",
+     "label": "Wall 1",
+     "type": "wall",
+     "face": "x0",
+     "quad": [],
+     "size": [
+      1.47,
+      2.55
+     ]
+    },
+    {
+     "id": "s-8i5gujhv",
+     "label": "Wall 2",
+     "type": "wall",
+     "face": "z1",
+     "quad": [],
+     "size": [
+      4.47,
+      2.55
+     ]
+    },
+    {
+     "id": "s-iorbn1a5",
+     "label": "Wall 3",
+     "type": "wall",
+     "face": "x1",
+     "quad": [],
+     "size": [
+      1.47,
+      2.55
+     ]
+    },
+    {
+     "id": "s-3yr470vj",
+     "label": "Wall 4",
+     "type": "wall",
+     "face": "z0",
+     "quad": [],
+     "size": [
+      4.47,
+      2.55
+     ]
+    },
+    {
+     "id": "s-agy4cyee",
+     "label": "Ceiling",
+     "type": "ceiling",
+     "face": "ceiling",
+     "quad": [],
+     "size": [
+      4.47,
+      1.47
+     ]
+    }
+   ]
   }
  ]
 }

@@ -8,6 +8,7 @@ import type { Application, LightTheme, SurfaceType } from '../types'
 import ProductPanel from './ProductPanel'
 import SettingsPanel from './SettingsPanel'
 import PhotoScene from './PhotoScene'
+import PanoScene from './PanoScene'
 import Preview from './Preview'
 import RoomSelect from './RoomSelect'
 import { addCurrentToCatalog } from './Modals'
@@ -72,7 +73,7 @@ function Toolbar({ rootRef }: { rootRef: React.RefObject<HTMLDivElement | null> 
       <IconBtn icon="reset" label={t('Reset')} onClick={s.reset} />
       <IconBtn icon="shuffle" label={t('Random')} onClick={randomDesign} />
       <IconBtn icon="compare" label={t('Compare')} onClick={() => s.setModal('compare')} />
-      {!room && s.photoRooms.some((r) => r.id === s.roomId) && <IconBtn icon="layers" label={t('Surfaces')} onClick={() => s.editSurfaces(s.roomId)} />}
+      {!room && s.photoRooms.some((r) => r.id === s.roomId && !r.pano) && <IconBtn icon="layers" label={t('Surfaces')} onClick={() => s.editSurfaces(s.roomId)} />}
       {room && <IconBtn icon="pano" label="360°" active={s.panorama} onClick={s.togglePanorama} />}
       <div className="menu-wrap">
         <IconBtn icon="sun" label={t('Lighting')} active={menu === 'theme'} onClick={() => setMenu(menu === 'theme' ? null : 'theme')} />
@@ -334,7 +335,7 @@ export default function Visualizer({ onClose }: { onClose: () => void }) {
                   <Scene3D room={room} />
                 </Suspense>
               ) : (
-                photo && <PhotoScene room={photo} />
+                photo && (photo.pano ? <PanoScene room={photo} /> : <PhotoScene room={photo} />)
               )}
               <SettingsPanel />
               {!panorama && (
