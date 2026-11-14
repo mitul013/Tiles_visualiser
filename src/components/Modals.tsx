@@ -4,6 +4,8 @@ import { findPaint, findProduct, roomName, surfacesForRoom, useAllProducts, useS
 import { sizeLabel } from '../data/products'
 import { calculate, M2_TO_FT2, money } from '../lib/calc'
 import { downloadCatalogPdf, downloadProductPdf } from '../lib/pdf'
+import { canShareFiles, prepareCatalog, sendToShop, sharePrepared, shopWhatsApp, type PreparedCatalog } from '../lib/whatsapp'
+import { brand } from '../lib/brand'
 import { shareUrl } from '../lib/share'
 import { LAYOUTS } from '../lib/layout'
 import type { CatalogEntry, Design, Product, SurfaceType } from '../types'
@@ -56,6 +58,22 @@ export function CatalogModal() {
       setBusy(false)
     }
   }
+  // WhatsApp: prepare the PDF first, then share / open the chat straight from the next tap
+  const [wa, setWa] = useState<{ key: string; p: PreparedCatalog } | null>(null)
+  const [waBusy, setWaBusy] = useState(false)
+  const waKey = chosen.map((c) => c.id).join(',')
+  const ready = wa && wa.key === waKey ? wa.p : null
+  const prepareWa = async () => {
+    setWaBusy(true)
+    try {
+      setWa({ key: waKey, p: await prepareCatalog(chosen) })
+    } catch {
+      toast('Could not prepare the catalogue')
+    } finally {
+      setWaBusy(false)
+    }
+  }
+  const shareFiles = canShareFiles()
   return (
     <Modal
       title="Your Catalogs"
@@ -71,6 +89,9 @@ export function CatalogModal() {
             <>
               <button className="btn" onClick={() => setSel(sel.length === catalogs.length ? [] : catalogs.map((c) => c.id))}>
                 {sel.length === catalogs.length ? 'Deselect all' : 'Select all'}
+              </button>
+              <button className="btn wa" disabled={waBusy} onClick={() => void prepareWa()}>
+                <Icon name="whatsapp" /> {waBusy ? 'Preparing…' : 'WhatsApp'}
               </button>
               <button className="btn primary" disabled={busy} onClick={dl}>
                 <Icon name="pdf" /> {busy ? 'Generating…' : `Download PDF (${chosen.length})`}
@@ -88,7 +109,44 @@ export function CatalogModal() {
         </div>
       ) : (
         <>
-          <p className="hint">Download all your designs as one PDF. Each page includes the room render, a QR code to reopen the design, and the applied products with quantities.</p>
+          {ready && (
+            <div className="wa-panel" role="region" aria-label="Send on WhatsApp">
+              <div className="wa-head">
+                <span className="wa-icon">
+                  <Icon name="whatsapp" size={22} />
+                </span>
+                <div>
+                  <b>Your catalogue is ready</b>
+                  <small>
+                    {ready.name} · {(ready.file.size / 1e6).toFixed(1)} MB · {chosen.length} design{chosen.length > 1 ? 's' : ''}
+                  </small>
+                </div>
+                <button className="x" onClick={() => setWa(null)} aria-label="Close">
+                  <Icon name="close" size={16} />
+                </button>
+              </div>
+              <div className="wa-actions">
+                <button
+                  className="btn wa"
+                  onClick={() =>
+                    void sharePrepared(ready).then((r) => r === 'downloaded' && toast('PDF downloaded: attach it in the WhatsApp chat that opened'))
+                  }
+                >
+                  <Icon name="share" size={16} /> {shareFiles ? 'Share PDF on WhatsApp' : 'Download PDF & open WhatsApp'}
+                </button>
+                {shopWhatsApp() && (
+                  <button className="btn" onClick={() => sendToShop(ready)}>
+                    <Icon name="whatsapp" size={16} /> Send to {brand.name} for a quote
+                  </button>
+                )}
+              </div>
+              <p className="hint">
+                {shareFiles ? 'Choose WhatsApp in the list that opens, then the chat to send it to.' : 'The PDF downloads and WhatsApp opens with a message ready; attach the downloaded PDF before sending.'}
+                {shopWhatsApp() ? ` "Send to ${brand.name}" opens a chat with the shop listing your designs and quantities.` : ''}
+              </p>
+            </div>
+          )}
+          <p className="hint">Download all your designs as one PDF, or send it on WhatsApp. Each design page includes the room, the materials with quantities, and a QR code to reopen the design.</p>
           <div className="catalog-grid">
             {catalogs.map((c) => {
               const lines = designLines(c.design)

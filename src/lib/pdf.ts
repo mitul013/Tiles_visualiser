@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
 import type { CatalogEntry, Product } from '../types'
 import { findPaint, findProduct, roomName, surfacesForRoom, useStore } from '../store'
+import { getRoom } from '../data/rooms'
 import { getSwatch } from './tileArt'
 import { calculate, money } from './calc'
 import { sizeLabel } from '../data/products'
@@ -456,8 +457,16 @@ function summaryPage(k: Kit, all: Line[]) {
 }
 
 /** Catalogue PDF: cover, one page per design, and a combined shopping list. */
-export async function downloadCatalogPdf(entries: CatalogEntry[], filename = 'tile-catalog.pdf') {
-  if (!entries.length) return
+/** What a catalogue contains, for messages that go with it (WhatsApp, e-mail). */
+export interface CatalogSummary {
+  designs: { name: string; room: string; link: string | null }[]
+  products: { name: string; sku: string; area: number; boxes: number; cost: number }[]
+  area: number
+  cost: number
+}
+
+/** Build the catalogue PDF: cover, one page per design, combined shopping list. */
+export async function buildCatalogPdf(entries: CatalogEntry[], filename = 'tile-catalog.pdf'): Promise<{ blob: Blob; filename: string; summary: CatalogSummary }> {
   const k = await newDoc()
   const { doc } = k
   const perEntry = entries.map(linesOf)
@@ -482,8 +491,39 @@ export async function downloadCatalogPdf(entries: CatalogEntry[], filename = 'ti
     doc.setPage(i)
     footer(k, i, pages, i === 1)
   }
-  notifyHost('SAVE_PDF', { fileName: filename, arrayBuffer: doc.output('arraybuffer') })
-  doc.save(filename)
+  // per product, on the combined area (as on the shopping-list page)
+  const byProduct = new Map<string, { p: Product; area: number }>()
+  for (const l of all) if (l.product) byProduct.set(l.product.id, { p: l.product, area: (byProduct.get(l.product.id)?.area ?? 0) + l.area })
+  const prods = [...byProduct.values()].map(({ p, area }) => {
+    const c = calculate(p, area)
+    return { name: p.name, sku: p.sku, area, boxes: c.boxes, cost: c.cost }
+  })
+  const summary: CatalogSummary = {
+    // links open the design on another device only for the built-in 3D rooms
+    designs: entries.map((e) => ({ name: e.name, room: roomName(e.design.roomId), link: getRoom(e.design.roomId) ? shareUrl(e.design) : null })),
+    products: prods,
+    area: totals.area,
+    cost: prods.reduce((a, x) => a + x.cost, 0),
+  }
+  return { blob: doc.output('blob'), filename, summary }
+}
+
+export async function downloadCatalogPdf(entries: CatalogEntry[], filename = 'tile-catalog.pdf') {
+  if (!entries.length) return
+  const { blob } = await buildCatalogPdf(entries, filename)
+  notifyHost('SAVE_PDF', { fileName: filename, arrayBuffer: await blob.arrayBuffer() })
+  saveBlob(blob, filename)
+}
+
+export function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 30_000)
 }
 
 /** One-page product sheet in the catalogue's style. */
