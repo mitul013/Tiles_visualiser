@@ -132,13 +132,13 @@ export default function App() {
                 <span>layouts</span>
               </div>
               <div>
-                <b>{demoCount || 8}</b>
+                <b>{demoCount || 5}</b>
                 <span>demo rooms</span>
               </div>
             </div>
           </div>
           <button className="hero-img" onClick={openHero} aria-label="Open this demo room">
-            <img src={`${base}hero.webp`} alt="Living room designed in the visualiser" onError={(e) => (e.currentTarget.style.visibility = 'hidden')} />
+            <img src={`${base}hero.webp`} alt="Living room with a marble floor, designed in the visualiser" onError={(e) => (e.currentTarget.style.visibility = 'hidden')} />
             <span className="play">Open this room →</span>
           </button>
         </section>

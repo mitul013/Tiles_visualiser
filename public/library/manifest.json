@@ -1146,7 +1146,8 @@
      ]
     }
    ],
-   "thumb": "library/living-tv/thumb.webp"
+   "thumb": "library/living-tv/thumb.webp",
+   "hidden": true
   },
   {
    "id": "lib-living-corner",
@@ -1577,7 +1578,8 @@
      ]
     }
    ],
-   "thumb": "library/living-corner/thumb.webp"
+   "thumb": "library/living-corner/thumb.webp",
+   "hidden": true
   },
   {
    "id": "lib-kitchen-sage",
@@ -2331,7 +2333,8 @@
      ]
     }
    ],
-   "thumb": "library/kitchen-sage/thumb.webp"
+   "thumb": "library/kitchen-sage/thumb.webp",
+   "hidden": true
   },
   {
    "id": "lib-kitchen-walnut",
@@ -4221,7 +4224,8 @@
      ]
     }
    ],
-   "thumb": "library/kitchen-white/thumb.webp"
+   "thumb": "library/kitchen-white/thumb.webp",
+   "hidden": true
   },
   {
    "id": "lib-bedroom-master",
@@ -5286,7 +5290,8 @@
      ]
     }
    ],
-   "thumb": "library/bedroom-terracotta/thumb.webp"
+   "thumb": "library/bedroom-terracotta/thumb.webp",
+   "hidden": true
   },
   {
    "id": "lib-bathroom-spa",
