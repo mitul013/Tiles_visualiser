@@ -28,6 +28,10 @@ const save = (url, file) => fs.writeFileSync(file, Buffer.from(url.split(',')[1]
     manifest.push({ id: `lib-${id}`, name: r.name, category: r.category, width: r.width, height: r.height, original: `library/${id}/original.jpg`, matt: `library/${id}/matt.png`, surfaces: r.surfaces })
     console.log('saved', id, r.surfaces.map((s) => s.label).join(', '))
   }
-  fs.writeFileSync(path.join(out, 'manifest.json'), JSON.stringify({ note: 'Room library. Each room: original photo, matt cut-out (tile area transparent), optional glossy cut-out, and surfaces (perspective guide quad + area + guide size in metres).', rooms: manifest }, null, 2))
+  // merge into the existing library (the photo demo rooms stay)
+  const file = path.join(out, 'manifest.json')
+  const cur = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : { rooms: [] }
+  cur.rooms = cur.rooms.filter((r) => !manifest.some((m) => m.id === r.id)).concat(manifest)
+  fs.writeFileSync(file, JSON.stringify(cur, null, 1))
   await browser.close()
 })()

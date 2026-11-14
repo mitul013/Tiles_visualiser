@@ -1,10 +1,14 @@
-import { useState } from 'react'
-import { ROOM_CATEGORIES, ROOMS } from '../data/rooms'
+import { useEffect, useState } from 'react'
 import { useStore } from '../store'
 import { Icon } from './ui'
 import { useT } from '../lib/i18n'
+import { demoRooms, ensureLibraryRoom, libraryThumb, loadLibrary, type LibraryRoom } from '../lib/library'
 
-const base = import.meta.env.BASE_URL
+const TYPE_COUNT = (r: LibraryRoom) => {
+  const n = (t: string) => r.surfaces.filter((s) => s.type === t).length
+  const walls = n('wall')
+  return [n('floor') && 'Floor', walls && (walls > 1 ? `${walls} walls` : 'Wall'), n('backsplash') && 'Backsplash', n('ceiling') && 'Ceiling'].filter(Boolean).join(' · ')
+}
 
 export default function RoomSelect() {
   const t = useT()
@@ -14,10 +18,15 @@ export default function RoomSelect() {
   const removePhoto = useStore((s) => s.removePhotoRoom)
   const saved = useStore((s) => s.saved)
   const [cat, setCat] = useState('All')
-
-  const openPanorama = (id: string) => {
-    openRoom(id)
-    useStore.setState({ panorama: true })
+  const [demos, setDemos] = useState<LibraryRoom[] | null>(null)
+  useEffect(() => {
+    void loadLibrary().then((rooms) => setDemos(demoRooms(rooms)))
+  }, [])
+  const categories = ['All', ...new Set((demos ?? []).map((r) => r.category))]
+  const myRooms = photoRooms.filter((r) => !r.id.startsWith('lib-'))
+  const openDemo = (r: LibraryRoom) => {
+    ensureLibraryRoom(r)
+    openRoom(r.id, {})
   }
 
   return (
@@ -40,20 +49,20 @@ export default function RoomSelect() {
             <small>Choose a demo room to try products now</small>
           </div>
         </a>
-        <button className="tip" onClick={() => openPanorama('living')}>
-          <Icon name="pano" size={26} />
+        <div className="tip">
+          <Icon name="check" size={26} />
           <div>
-            <b>Step into a 360° panorama</b>
-            <small>Look all around a room you design</small>
+            <b>True to size</b>
+            <small>Every room is measured, so tiles show at their real size</small>
           </div>
-        </button>
+        </div>
       </div>
 
-      {photoRooms.length > 0 && (
+      {myRooms.length > 0 && (
         <section>
           <h2>My Rooms</h2>
           <div className="room-grid">
-            {photoRooms.map((r) => (
+            {myRooms.map((r) => (
               <div key={r.id} className="room-card" onClick={() => openRoom(r.id, {})}>
                 <img src={r.image} alt={r.name} />
                 <div className="rc-foot">
@@ -79,7 +88,7 @@ export default function RoomSelect() {
         <div className="sec-head">
           <h2>{t('Demo rooms')}</h2>
           <div className="chips">
-            {ROOM_CATEGORIES.map((c) => (
+            {categories.map((c) => (
               <button key={c} className={cat === c ? 'on' : ''} onClick={() => setCat(c)}>
                 {c}
               </button>
@@ -87,28 +96,19 @@ export default function RoomSelect() {
           </div>
         </div>
         <div className="room-grid">
-          {ROOMS.filter((r) => cat === 'All' || r.category === cat).map((r) => (
-            <div key={r.id} className="room-card" onClick={() => openRoom(r.id)}>
-              <img src={`${base}rooms/${r.id}.jpg`} alt={r.name} onError={(e) => (e.currentTarget.style.visibility = 'hidden')} />
-              <span className="rc-cat">{r.category}</span>
-              <button
-                className="rc-pano"
-                title="Open in 360°"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  openPanorama(r.id)
-                }}
-              >
-                360°
-              </button>
-              <div className="rc-foot">
-                <b>{r.name}</b>
-                <small>
-                  {r.surfaces.length} surfaces · {r.dims.w}×{r.dims.d} m
-                </small>
+          {demos === null && <p className="hint">Loading rooms…</p>}
+          {demos
+            ?.filter((r) => cat === 'All' || r.category === cat)
+            .map((r) => (
+              <div key={r.id} className="room-card" onClick={() => openDemo(r)}>
+                <img src={libraryThumb(r)} alt={r.name} loading="lazy" />
+                <span className="rc-cat">{r.category}</span>
+                <div className="rc-foot">
+                  <b>{r.name}</b>
+                  <small>{TYPE_COUNT(r)}</small>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
         </div>
       </section>
 

@@ -1,3 +1,4 @@
+import { demoRooms, ensureLibraryRoom, libraryThumb, loadLibrary, type LibraryRoom } from '../lib/library'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useStore, type PhotoSurface } from '../store'
 import type { SurfaceType } from '../types'
@@ -11,18 +12,6 @@ import { enterLandscape, exitLandscape, useViewport } from '../lib/fullscreen'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
-/** An entry of public/library/manifest.json (see scripts/library.cjs). */
-interface LibraryRoom {
-  id: string
-  name: string
-  category: string
-  width: number
-  height: number
-  original: string
-  matt: string
-  glossy?: string
-  surfaces: PhotoSurface[]
-}
 
 type LayerKey = 'cutout' | 'shadow' | 'reflection' | 'highlight'
 const LAYER_KEYS: LayerKey[] = ['cutout', 'shadow', 'reflection', 'highlight']
@@ -72,37 +61,11 @@ export default function UploadRoomModal() {
   const [library, setLibrary] = useState<LibraryRoom[] | null>(null)
   useEffect(() => {
     if (source !== 'library' || library) return
-    fetch(`${import.meta.env.BASE_URL}library/manifest.json`)
-      .then((r) => r.json())
-      .then((m: { rooms: LibraryRoom[] }) => setLibrary(m.rooms))
-      .catch(() => setLibrary([]))
+    void loadLibrary().then((rooms) => setLibrary(demoRooms(rooms)))
   }, [source, library])
-  /** Library rooms are fully prepared: cut-outs carry objects + lighting, surfaces carry exact planes. */
+  /** Library rooms are fully prepared: surfaces carry exact planes, objects come with the room. */
   const openLibraryRoom = (r: LibraryRoom) => {
-    const st = useStore.getState()
-    const url = (f: string) => `${import.meta.env.BASE_URL}${f}`
-    const flat = (color: string) => {
-      const c = document.createElement('canvas')
-      c.width = c.height = 2
-      const x = c.getContext('2d')!
-      x.fillStyle = color
-      x.fillRect(0, 0, 2, 2)
-      return c.toDataURL('image/png')
-    }
-    // a copy saved earlier keeps its designs but takes the library's current surfaces (sizes get corrected)
-    if (st.photoRooms.some((x) => x.id === r.id)) st.updatePhotoRoom(r.id, { surfaces: r.surfaces })
-    else
-      addRoom({
-        id: r.id,
-        name: r.name,
-        image: url(r.original),
-        width: r.width,
-        height: r.height,
-        surfaces: r.surfaces,
-        // the cut-out's own semi-transparent pixels light the tiles: generated light maps stay neutral
-        layers: { cutout: url(r.matt), cutoutGlossy: r.glossy ? url(r.glossy) : undefined, shadow: flat('#ffffff'), reflection: flat('#ffffff'), highlight: flat('#000000'), source: 'uploaded' },
-        createdAt: Date.now(),
-      })
+    ensureLibraryRoom(r)
     openRoom(r.id, {})
     close()
     toast(`${r.name} ready: pick a tile to apply`)
@@ -767,7 +730,7 @@ export default function UploadRoomModal() {
           {library?.length === 0 && <p className="hint">No library rooms available.</p>}
           {library?.map((r) => (
             <button key={r.id} className="room-card lib-card" onClick={() => openLibraryRoom(r)}>
-              <img src={`${import.meta.env.BASE_URL}${r.original}`} alt={r.name} loading="lazy" />
+              <img src={libraryThumb(r)} alt={r.name} loading="lazy" />
               <span className="rc-cat">{r.category}</span>
               <div className="rc-foot">
                 <b>{r.name}</b>

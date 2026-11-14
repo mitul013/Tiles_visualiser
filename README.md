@@ -55,13 +55,25 @@ shop name, tagline, logo, phone, WhatsApp, email, website, address, **currency**
 and catalogue PDFs follow it after a reload; no rebuild needed. Product prices in
 `src/data/products.ts` are taken to be in that currency.
 
-## Room library
+## Demo rooms (room library)
 
-The upload dialog has a **Library** tab with ready-to-use photo rooms (`public/library/manifest.json`):
-original photo + matt (and optional glossy) cut-out with the tile area transparent and shadows baked in,
-plus exact surfaces (perspective guide, area, real size). Rooms are generated from the 3D scenes with
-`npm run library`, and your own prepared rooms can be added by dropping files in `public/library/<id>/`
-and adding an entry to the manifest.
+The demo rooms (room picker and the upload dialog's **Library** tab) are photo-real rooms in
+`public/library/`: 2 living rooms, 3 kitchens, 2 bedrooms and a bathroom. The photos were generated
+with open image models (Qwen-Image and FLUX.1-schnell, both Apache-2.0), so they are free to use
+commercially with no credit needed. Each one went through the room detector (floor, walls, ceiling and
+backsplash at real size, furniture mask), so tiles show at true scale.
+
+Add your own room photos (a photo you own, or one licensed for commercial use):
+
+```bash
+node scripts/library-photos.cjs rooms.json   # rooms.json: [{ "id", "name", "category", "src" }]
+```
+
+The script resizes each photo, detects it (large model if `server/models/room-seg-large.onnx` exists),
+tidies small wall pieces (kitchens get one merged backsplash) and adds it to `manifest.json`.
+`node scripts/library-photos.cjs --tidy` re-runs only the clean-up. Rooms with prepared matt / glossy
+cut-outs can still be added to the manifest by hand. The old 3D rooms remain in the code for saved designs
+but are no longer listed.
 
 ## Run
 
