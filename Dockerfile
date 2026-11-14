@@ -11,11 +11,14 @@ FROM python:3.12-slim AS model
 WORKDIR /work
 COPY server/ /ctx/server/
 COPY scripts/detect/export_models.py /work/
-RUN if [ -f /ctx/server/models/room-seg-large.onnx ]; then \
+# (exporting takes ~10 min and ~4 GB of RAM, once; the result is cached by Docker)
+RUN --mount=type=secret,id=ca,required=false if [ -f /run/secrets/ca ] && [ -s /run/secrets/ca ]; then \
+      export PIP_CERT=/run/secrets/ca REQUESTS_CA_BUNDLE=/run/secrets/ca SSL_CERT_FILE=/run/secrets/ca CURL_CA_BUNDLE=/run/secrets/ca; fi; \
+    if [ -f /ctx/server/models/room-seg-large.onnx ]; then \
       mkdir -p /out && cp /ctx/server/models/room-seg-large.onnx /out/; \
     else \
-      pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
-      pip install --no-cache-dir "transformers>=4.45" onnx onnxruntime safetensors huggingface_hub && \
+      { pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu || pip install --no-cache-dir torch; } && \
+      pip install --no-cache-dir "transformers==4.57.6" "huggingface_hub<1.0" onnx onnxruntime safetensors && \
       python export_models.py /out --server; \
     fi
 
@@ -24,7 +27,7 @@ FROM node:22-slim
 WORKDIR /app
 COPY package.json package-lock.json ./
 # behind a TLS-inspecting proxy, pass its certificate: docker build --secret id=ca,src=proxy-ca.crt .
-RUN --mount=type=secret,id=ca,required=false sh -c 'if [ -f /run/secrets/ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/ca; fi; npm ci --no-audit --no-fund'
+RUN --mount=type=secret,id=ca,required=false sh -c 'if [ -s /run/secrets/ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/ca; fi; npm ci --no-audit --no-fund'
 COPY tsconfig*.json ./
 COPY src/ src/
 COPY scripts/detect/ scripts/detect/

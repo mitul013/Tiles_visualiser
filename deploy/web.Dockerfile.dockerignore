@@ -1,0 +1,8 @@
+node_modules
+dist
+test-fixtures
+detect-out
+model-export
+server/models
+.git
+.claude

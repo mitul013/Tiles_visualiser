@@ -1,0 +1,26 @@
+# SITE_ADDRESS: your domain (e.g. tiles.example.com) for automatic HTTPS, or :80 for plain HTTP by IP
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	# room detection service (photos up to 20 MB, detection takes up to ~1 min)
+	handle_path /api/* {
+		request_body {
+			max_size 20MB
+		}
+		reverse_proxy detect:7860 {
+			transport http {
+				read_timeout 180s
+			}
+		}
+	}
+
+	# the web app
+	handle {
+		root * /srv
+		# the in-browser models are large and versioned by their manifest: cache them for a week
+		@models path /models/*.bin
+		header @models Cache-Control "public, max-age=604800"
+		try_files {path} /index.html
+		file_server
+	}
+}

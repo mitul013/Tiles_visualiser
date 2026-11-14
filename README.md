@@ -78,7 +78,13 @@ npm run build && npx vite preview --port 4173 &
 npm run thumbnails   # renders public/rooms/<id>.jpg with Playwright
 ```
 
-## Deploy (free)
+## Deploy the whole app on your own server
+
+`deploy/docker-compose.yml` runs the web app (Caddy, automatic HTTPS) and the room-detection
+backend together on one machine. Step-by-step guide for Oracle Cloud's free tier:
+[`docs/DEPLOY-ORACLE.md`](docs/DEPLOY-ORACLE.md).
+
+## Deploy the web app only (free static hosting)
 
 The app is fully static (`npm run build` → `dist/`, relative paths), so any static host works:
 
