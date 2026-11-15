@@ -446,7 +446,7 @@
   },
   {
    "id": "lib-pano-lebombo",
-   "name": "Sunlit Open Living (360\u00b0)",
+   "name": "Sunlit Open Living (360°)",
    "category": "Living Room",
    "width": 4096,
    "height": 2048,
@@ -464,7 +464,7 @@
      "h": 1.507,
      "H": 3.4
     },
-    "yaw": 0,
+    "yaw": 60,
     "source": "Poly Haven (CC0)"
    },
    "surfaces": [
@@ -534,12 +534,11 @@
       4.91
      ]
     }
-   ],
-   "hidden": true
+   ]
   },
   {
    "id": "lib-pano-hotel",
-   "name": "Boutique Hotel Suite (360\u00b0)",
+   "name": "Boutique Hotel Suite (360°)",
    "category": "Bedroom",
    "width": 4096,
    "height": 2048,
@@ -557,7 +556,7 @@
      "h": 1.6,
      "H": 3.022
     },
-    "yaw": 0,
+    "yaw": 240,
     "source": "Poly Haven (CC0)"
    },
    "surfaces": [
@@ -574,7 +573,7 @@
     },
     {
      "id": "s-3c9u8nbe",
-     "label": "Wall 1",
+     "label": "Wall 2",
      "type": "wall",
      "face": "x0",
      "quad": [],
@@ -585,7 +584,7 @@
     },
     {
      "id": "s-pvcwkxoq",
-     "label": "Wall 2",
+     "label": "Wall 3",
      "type": "wall",
      "face": "z1",
      "quad": [],
@@ -596,7 +595,7 @@
     },
     {
      "id": "s-ueoymz32",
-     "label": "Wall 3",
+     "label": "Wall 4",
      "type": "wall",
      "face": "x1",
      "quad": [],
@@ -607,7 +606,7 @@
     },
     {
      "id": "s-7hyo3031",
-     "label": "Wall 4",
+     "label": "Wall 1",
      "type": "wall",
      "face": "z0",
      "quad": [],
@@ -627,12 +626,11 @@
       2.59
      ]
     }
-   ],
-   "hidden": true
+   ]
   },
   {
    "id": "lib-pano-seaview",
-   "name": "Seaview Bedroom Suite (360\u00b0)",
+   "name": "Seaview Bedroom Suite (360°)",
    "category": "Bedroom",
    "width": 4096,
    "height": 2048,
@@ -650,7 +648,7 @@
      "h": 1.6,
      "H": 2.55
     },
-    "yaw": 0,
+    "yaw": 20,
     "source": "Poly Haven (CC0)"
    },
    "surfaces": [
@@ -720,8 +718,7 @@
       1.47
      ]
     }
-   ],
-   "hidden": true
+   ]
   },
   {
    "id": "lib-living-tv",

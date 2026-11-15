@@ -69,6 +69,8 @@ void main() {
   vec3 photo = texture2D(uPano, uv).rgb;
   vec3 m = texture2D(uMask, uv).rgb;
   float shade = texture2D(uShade, uv).r * 2.0;
+  // sunlight brightens the new finish without burning it out to white
+  if (shade > 1.0) shade = 1.0 + (shade - 1.0) * 0.4;
   float c = cos(-uPhi), s = sin(-uPhi);
   vec2 d = vec2(dir.x * c - dir.z * s, dir.x * s + dir.z * c);
   vec3 col = photo * (1.0 - clamp(m.r + m.g + m.b, 0.0, 1.0));
@@ -204,7 +206,7 @@ export default function PanoScene({ room }: { room: PhotoRoom }) {
     const scene = new THREE.Scene()
     scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat))
     const cam = new THREE.Camera()
-    const view = { yaw: (pano.yaw * Math.PI) / 180, pitch: -0.12, fov: 85 }
+    const view = { yaw: (pano.yaw * Math.PI) / 180, pitch: -0.3, fov: 100 }
     const draw = () => {
       const w = wrap.clientWidth
       const h = wrap.clientHeight
