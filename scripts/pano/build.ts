@@ -13,6 +13,8 @@
  *
  * Writes public/library/<id>/{pano.webp, mask.webp, shade.webp, thumb.webp} and adds the room to
  * public/library/manifest.json.
+ * Then run scripts/pano/refit.ts <id> (box from all visible floor: steadier when furniture hides
+ * the floor-wall line) and scripts/pano/view.ts <id> <yaw> (opening view).
  */
 import fs from 'node:fs'
 import path from 'node:path'

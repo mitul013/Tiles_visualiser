@@ -26,6 +26,10 @@ uniform sampler2D uT0, uT1, uT2, uT3, uT4, uT5;
 uniform vec3 uF, uR, uU;
 uniform float uTanX, uTanY;
 uniform float uPhi, uX0, uX1, uZ0, uZ1, uH, uCeil;
+// tiles are laid past the fitted box (alcoves, bays, door openings) and above / below the walls
+const float M = 2.0;   // floor / ceiling margin round the box, metres
+const float WB = 0.3;  // wall: below the floor line
+const float WT = 0.4;  // wall: above the ceiling line, share of the ceiling height
 uniform int uMode[6];
 uniform vec3 uPaint[6];
 uniform float uGloss[6];
@@ -51,6 +55,8 @@ vec3 finish(int i, vec2 uv, vec3 photo, float shade, vec3 dir) {
   float gl = uGloss[0];
   for (int k = 1; k < 6; k++) if (k == i) { m = uMode[k]; pc = uPaint[k]; gl = uGloss[k]; }
   if (m == 0) return photo;
+  // beyond the laid area: keep the photo rather than smearing the last row of tiles
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return photo;
   vec3 c = m == 1 ? tex(i, uv).rgb : pc;
   vec3 lit = c * shade;
   if (gl > 0.0) {
@@ -80,7 +86,7 @@ void main() {
     vec3 f = photo;
     if (dir.y < -0.001) {
       vec2 p = d * (uH / -dir.y);
-      vec2 st = vec2((p.x - uX0) / (uX1 - uX0), (uZ1 - p.y) / (uZ1 - uZ0));
+      vec2 st = vec2((p.x - uX0 + M) / (uX1 - uX0 + 2.0 * M), (uZ1 + M - p.y) / (uZ1 - uZ0 + 2.0 * M));
       f = finish(0, st, photo, shade, dir);
       flash += uFlash[0] * m.r;
     }
@@ -91,7 +97,7 @@ void main() {
     vec3 f = photo;
     if (dir.y > 0.001) {
       vec2 p = d * ((uCeil - uH) / dir.y);
-      vec2 st = vec2((p.x - uX0) / (uX1 - uX0), (p.y - uZ0) / (uZ1 - uZ0));
+      vec2 st = vec2((p.x - uX0 + M) / (uX1 - uX0 + 2.0 * M), (p.y - uZ0 + M) / (uZ1 - uZ0 + 2.0 * M));
       f = finish(5, st, photo, shade, dir);
       flash += uFlash[5] * m.b;
     }
@@ -108,14 +114,14 @@ void main() {
     vec2 st;
     if (tx < tz) {
       face = d.x > 0.0 ? 2 : 4;
-      st = vec2(d.x > 0.0 ? (uZ1 - p.y) / (uZ1 - uZ0) : (p.y - uZ0) / (uZ1 - uZ0), 1.0 - y / uCeil);
+      st = vec2(d.x > 0.0 ? (uZ1 - p.y) / (uZ1 - uZ0) : (p.y - uZ0) / (uZ1 - uZ0), 1.0 - (y + WB) / (uCeil * (1.0 + WT) + WB));
     } else {
       face = d.y > 0.0 ? 1 : 3;
-      st = vec2(d.y > 0.0 ? (p.x - uX0) / (uX1 - uX0) : (uX1 - p.x) / (uX1 - uX0), 1.0 - y / uCeil);
+      st = vec2(d.y > 0.0 ? (p.x - uX0) / (uX1 - uX0) : (uX1 - p.x) / (uX1 - uX0), 1.0 - (y + WB) / (uCeil * (1.0 + WT) + WB));
     }
     vec3 f = photo;
-    // keep the photo where the box is far off (vaulted ceilings, straight up)
-    if (y > -0.2 && y < uCeil * 1.25) {
+    // (outside the laid area finish() keeps the photo: vaulted ceilings, straight up)
+    {
       f = finish(face, st, photo, shade, dir);
       for (int k = 1; k < 5; k++) if (k == face) flash += uFlash[k] * m.g;
     }
@@ -284,8 +290,9 @@ export default function PanoScene({ room }: { room: PhotoRoom }) {
           }
           const p = findProduct(a.productId)
           if (!p) return
-          const size: [number, number] = face === 'floor' || face === 'ceiling' ? [b.x1 - b.x0, b.z1 - b.z0] : [face[0] === 'x' ? b.z1 - b.z0 : b.x1 - b.x0, b.H]
-          const cv = await renderTiledSurface(p, a.settings, size, 2048)
+          // the area the shader lays tiles over (M, WB, WT in the shader): the box plus margins
+          const size: [number, number] = face === 'floor' || face === 'ceiling' ? [b.x1 - b.x0 + 4, b.z1 - b.z0 + 4] : [face[0] === 'x' ? b.z1 - b.z0 : b.x1 - b.x0, b.H * 1.4 + 0.3]
+          const cv = await renderTiledSurface(p, a.settings, size, 2560)
           const t = new THREE.CanvasTexture(cv)
           t.flipY = false
           t.colorSpace = THREE.NoColorSpace
