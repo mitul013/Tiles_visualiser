@@ -163,10 +163,23 @@ export interface SurfaceMaps {
  * Render a full surface (in real-world metres) covered with the given product
  * and layout settings. Returns canvases whose pixels map 1:1 onto the surface.
  */
-export async function renderSurfaceMaps(product: Product, settings: SurfaceSettings, sizeM: [number, number], maxTex = 2048, withMaps = true): Promise<SurfaceMaps> {
-  const ppm = pxPerMetre(sizeM, maxTex)
+export interface SurfaceOptions {
+  /** pixels-per-metre ceiling (default 420; repeating blocks go much higher) */
+  ppmMax?: number
+  /**
+   * the canvas is one repeat of the pattern (renderTileBlock): each tile's face and turn come from
+   * its position wrapped round the block, so a tile cut by one edge continues on the opposite edge
+   */
+  periodic?: boolean
+}
+
+export async function renderSurfaceMaps(product: Product, settings: SurfaceSettings, sizeM: [number, number], maxTex = 2048, withMaps = true, opts: SurfaceOptions = {}): Promise<SurfaceMaps> {
+  const ppm = Math.min(opts.ppmMax ?? 420, maxTex / Math.max(sizeM[0], sizeM[1]))
   const W = Math.max(2, Math.round(sizeM[0] * ppm))
   const H = Math.max(2, Math.round(sizeM[1] * ppm))
+  // whole pixels: stretch by the rounding (well under 0.1%) so a block's edges meet exactly
+  const kx = W / (sizeM[0] * ppm)
+  const ky = H / (sizeM[1] * ppm)
   const mk = () => {
     const c = document.createElement('canvas')
     c.width = W
@@ -196,7 +209,9 @@ export async function renderSurfaceMaps(product: Product, settings: SurfaceSetti
     hctx.fillRect(0, 0, W, H)
   }
 
-  const variants = await getTileVariants(product, 384)
+  // tile art at the resolution it will be shown (more detail for close-up, sharp renders)
+  const tilePx = (Math.max(product.size[0], product.size[1]) / 100) * ppm
+  const variants = await getTileVariants(product, opts.periodic ? Math.max(384, Math.min(1024, Math.round(tilePx / 64) * 64)) : 384)
   const seed = hashStr(product.id + settings.layout)
   const r = rng(seed)
   const slab = variants.length === SLAB_GRID * SLAB_GRID && ['grid', 'diagonal', 'stack'].includes(settings.layout)
@@ -214,7 +229,18 @@ export async function renderSurfaceMaps(product: Product, settings: SurfaceSetti
   const setup = (c: CanvasRenderingContext2D) => {
     c.save()
     c.translate(W / 2, H / 2)
+    c.scale(kx, ky)
     c.rotate((angle * Math.PI) / 180)
+  }
+  // periodic blocks: a tile's random choices come from its centre wrapped round the block
+  const cosA = Math.cos((angle * Math.PI) / 180)
+  const sinA = Math.sin((angle * Math.PI) / 180)
+  const wrapRng = (cx: number, cy: number) => {
+    const mod = (a: number, n: number) => ((a % n) + n) % n
+    const X = mod(W / 2 + (cx * cosA - cy * sinA) * kx, W)
+    const Y = mod(H / 2 + (cx * sinA + cy * cosA) * ky, H)
+    // snap so the two halves of a cut tile (exactly one block apart) agree
+    return rng(hashStr(`${Math.round(X * 2) % Math.round(W * 2)},${Math.round(Y * 2) % Math.round(H * 2)}`) + seed)
   }
   setup(ctx)
   if (hctx) setup(hctx)
@@ -285,7 +311,8 @@ export async function renderSurfaceMaps(product: Product, settings: SurfaceSetti
         ctx.save()
         hex(ctx, cx, y, rr)
         ctx.clip()
-        ctx.drawImage(variants[Math.floor(r() * variants.length)], cx - hr, y - hr, hr * 2, hr * 2)
+        const pick = opts.periodic ? wrapRng(cx, y)() : r()
+        ctx.drawImage(variants[Math.floor(pick * variants.length)], cx - hr, y - hr, hr * 2, hr * 2)
         ctx.restore()
         if (hctx) {
           hctx.fillStyle = '#fff'
@@ -298,9 +325,14 @@ export async function renderSurfaceMaps(product: Product, settings: SurfaceSetti
     const aligned = angle % 90 === 0 && settings.layout !== 'herringbone'
     placements(settings.layout, tw, th, D, r, (p) => {
       // consume random numbers in a fixed order so colour and depth agree
-      const pickR = r()
+      let pickR = r()
       const toneR = r()
-      const turnR = r()
+      let turnR = r()
+      if (opts.periodic) {
+        const wr = wrapRng(p.x + p.w / 2, p.y + p.h / 2)
+        pickR = wr()
+        turnR = wr()
+      }
       if (!inView(p.x, p.y, p.w, p.h)) return
       const mod = (a: number, n: number) => ((a % n) + n) % n
       const img = sameImage
@@ -333,6 +365,66 @@ export async function renderSurfaceMaps(product: Product, settings: SurfaceSetti
     mctx.drawImage(height, 0, 0, MW, MH)
   }
   return { color, normal: heightToNormal(mctx, MW, MH, (settings.groutMm > 0 ? 2.2 : 1.2) * Math.max(0.6, k)), roughness: heightToRoughness(mctx, MW, MH, settings.finish === 'glossy' ? 0.12 : 0.78) }
+}
+
+/**
+ * One repeat of a product's layout, for the GPU to tile across a surface (as the reference does with
+ * its tile textures): returns the block canvas and its size in metres, or null when the layout does
+ * not repeat on a simple rectangle (rugs, odd rotations) and the whole surface must be drawn.
+ */
+export async function renderTileBlock(product: Product, settings: SurfaceSettings, maxTex = 2048): Promise<{ canvas: HTMLCanvasElement; size: [number, number] } | null> {
+  if (product.material === 'Rug') return null
+  const tw = product.size[0] / 100
+  const th = product.size[1] / 100
+  const angle = (((settings.layout === 'diagonal' ? 45 : 0) + settings.rotation) % 180 + 180) % 180
+  const variants = await getTileVariants(product, 64)
+  const slab = variants.length === SLAB_GRID * SLAB_GRID && ['grid', 'diagonal', 'stack'].includes(settings.layout)
+  let lw: number
+  let lh: number
+  if (angle === 45 || angle === 135) {
+    // square tiles at 45°: the lattice repeats every diagonal along both axes
+    if (Math.abs(tw - th) > 1e-3 || !['grid', 'diagonal'].includes(settings.layout) || product.material === 'Hexagon') return null
+    const n = slab ? SLAB_GRID : 2
+    lw = lh = n * tw * Math.SQRT2
+  } else if (angle !== 0 && angle !== 90) return null
+  else {
+    const L = Math.max(tw, th)
+    const S = Math.min(tw, th)
+    switch (settings.layout) {
+      case 'herringbone': {
+        const ratio = L / S
+        if (Math.abs(ratio - Math.round(ratio)) > 0.02) return null
+        lw = lh = 2 * L
+        break
+      }
+      case 'stack':
+        ;[lw, lh] = slab ? [SLAB_GRID * S, SLAB_GRID * L] : [4 * S, 4 * L]
+        break
+      case 'third':
+        ;[lw, lh] = th > tw ? [6 * tw, 4 * th] : [4 * tw, 6 * th]
+        break
+      case 'random':
+        ;[lw, lh] = th > tw ? [8 * tw, 4 * th] : [4 * tw, 8 * th]
+        break
+      case 'rows':
+      case 'columns':
+      case 'quarter':
+        lw = 6 * tw
+        lh = 6 * th
+        break
+      default:
+        lw = (slab ? SLAB_GRID : 4) * tw
+        lh = (slab ? SLAB_GRID : 4) * th
+    }
+    if (product.material === 'Hexagon') {
+      lw = 4 * tw
+      lh = 2 * Math.sqrt(3) * tw
+    }
+  }
+  // the layout is drawn in a frame turned by the layout angle: 90° swaps the block's sides
+  const size: [number, number] = angle === 90 ? [lh, lw] : [lw, lh]
+  const { color } = await renderSurfaceMaps(product, settings, size, maxTex, false, { ppmMax: 2000, periodic: true })
+  return { canvas: color, size }
 }
 
 /** Convenience wrapper returning only the colour canvas. */
