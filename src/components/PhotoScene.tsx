@@ -117,7 +117,7 @@ export default function PhotoScene({ room, pins = false }: { room: PhotoRoom; pi
         const coverPoly = sf.area ? sf.area.map(([x, y]) => [Math.min(W, Math.max(0, x * W)), Math.min(H, Math.max(0, y * H))] as Pt) : frame
         const ex = extend ? coverQuad(sf.q, coverPoly) : { quad: sf.q, u0: 0, u1: 1, v0: 0, v1: 1 }
         const size: [number, number] = [sf.size[0] * (ex.u1 - ex.u0), sf.size[1] * (ex.v1 - ex.v0)]
-        const img = await surfaceImage(app, size, extend ? 2600 : 1600)
+        const img = await surfaceImage(app, size, extend ? 3600 : 2048)
         const clip = sf.area ? sf.area.map(([x, y]) => [x * W, y * H] as Pt) : extend ? ex.quad : sf.q
         if (img) tiles.push({ q: clip, ext: ex.quad, img, id: sf.id, glossy: (app.kind === 'tile' ? app.settings.finish : app.finish) === 'glossy' })
       }
@@ -128,14 +128,24 @@ export default function PhotoScene({ room, pins = false }: { room: PhotoRoom; pi
       // 0. original photo
       ctx.drawImage(photo, 0, 0, W, H)
       if (!useStore.getState().originalShot) setOriginal(cv.toDataURL('image/jpeg', 0.85))
-      // 1. tiles in perspective
+      // 1. tiles in perspective, drawn at twice the size and scaled down (every pixel averages 4
+      //    samples): far-away tiles stay smooth instead of breaking into streaks
+      const SS = 2
+      const tl = document.createElement('canvas')
+      tl.width = W * SS
+      tl.height = H * SS
+      const tctx = tl.getContext('2d')!
+      tctx.scale(SS, SS)
       for (const t of tiles) {
-        ctx.save()
-        quadPath(ctx, t.q)
-        ctx.clip()
-        drawPerspective(ctx, t.img, t.ext, 32)
-        ctx.restore()
+        tctx.save()
+        quadPath(tctx, t.q)
+        tctx.clip()
+        drawPerspective(tctx, t.img, t.ext, 40, SS)
+        tctx.restore()
       }
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'high'
+      ctx.drawImage(tl, 0, 0, W, H)
       // 2. room light on the tiles (multiply): matt surfaces use the shadow map,
       //    glossy surfaces the reflection map (the reference selects these per surface with a stencil)
       const lightL = document.createElement('canvas')

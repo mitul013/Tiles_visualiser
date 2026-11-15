@@ -80,24 +80,67 @@ function drawTri(ctx: CanvasRenderingContext2D, img: CanvasImageSource, d: Pt[],
 }
 
 /** Perspective-map `img` onto quad `q` (in destination pixel coords) by subdividing into triangles. */
-export function drawPerspective(ctx: CanvasRenderingContext2D, img: HTMLCanvasElement, q: Pt[], steps = 22) {
+/**
+ * Smaller copies of a texture (½, ¼, ⅛…), each filtered from the one before: far-away parts of a
+ * surface are drawn from the copy that matches their size on screen, so tiny tiles stay clean
+ * instead of breaking into noise (canvas 2D has no mipmaps of its own).
+ */
+const mipCache = new WeakMap<HTMLCanvasElement, HTMLCanvasElement[]>()
+function mipLevels(img: HTMLCanvasElement) {
+  let levels = mipCache.get(img)
+  if (levels) return levels
+  levels = [img]
+  let cur = img
+  while (cur.width > 8 && cur.height > 8 && levels.length < 9) {
+    const c = document.createElement('canvas')
+    c.width = Math.max(1, Math.round(cur.width / 2))
+    c.height = Math.max(1, Math.round(cur.height / 2))
+    const x = c.getContext('2d')!
+    x.imageSmoothingEnabled = true
+    x.imageSmoothingQuality = 'high'
+    x.drawImage(cur, 0, 0, c.width, c.height)
+    levels.push(c)
+    cur = c
+  }
+  mipCache.set(img, levels)
+  return levels
+}
+
+/** `pxScale`: device pixels per unit of q (when drawing into a supersampled canvas) */
+export function drawPerspective(ctx: CanvasRenderingContext2D, img: HTMLCanvasElement, q: Pt[], steps = 22, pxScale = 1) {
   const H = squareToQuad(q)
   const iw = img.width
   const ih = img.height
+  const levels = mipLevels(img)
   const grid: Pt[][] = []
   for (let j = 0; j <= steps; j++) {
     const row: Pt[] = []
     for (let i = 0; i <= steps; i++) row.push(applyH(H, i / steps, j / steps))
     grid.push(row)
   }
+  const area = (a: Pt, b: Pt, c: Pt) => Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])) / 2
+  const texelArea = (iw / steps) * (ih / steps)
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
   for (let j = 0; j < steps; j++)
     for (let i = 0; i < steps; i++) {
-      const u0 = (i / steps) * iw
-      const u1 = ((i + 1) / steps) * iw
-      const v0 = (j / steps) * ih
-      const v1 = ((j + 1) / steps) * ih
-      drawTri(ctx, img, [grid[j][i], grid[j][i + 1], grid[j + 1][i + 1]], [[u0, v0], [u1, v0], [u1, v1]])
-      drawTri(ctx, img, [grid[j][i], grid[j + 1][i + 1], grid[j + 1][i]], [[u0, v0], [u1, v1], [u0, v1]])
+      const a = grid[j][i]
+      const b = grid[j][i + 1]
+      const c = grid[j + 1][i + 1]
+      const d = grid[j + 1][i]
+      const px = area(a, b, c) + area(a, c, d)
+      // texels per screen pixel → level (a little on the sharp side)
+      const ratio = Math.sqrt(texelArea / Math.max(px * pxScale * pxScale, 1e-3)) * 0.9
+      const L = Math.max(0, Math.min(levels.length - 1, Math.floor(Math.log2(Math.max(1, ratio)))))
+      const src = levels[L]
+      const sx = src.width / iw
+      const sy = src.height / ih
+      const u0 = (i / steps) * iw * sx
+      const u1 = ((i + 1) / steps) * iw * sx
+      const v0 = (j / steps) * ih * sy
+      const v1 = ((j + 1) / steps) * ih * sy
+      drawTri(ctx, src, [a, b, c], [[u0, v0], [u1, v0], [u1, v1]])
+      drawTri(ctx, src, [a, c, d], [[u0, v0], [u1, v1], [u0, v1]])
     }
 }
 
