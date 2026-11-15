@@ -19,6 +19,7 @@ import PhotoScene from './PhotoScene'
 import PanoScene from './PanoScene'
 import Preview from './Preview'
 import { addCurrentToCatalog } from './Modals'
+import { PHONE_LANDSCAPE, useMedia } from '../lib/useMedia'
 import { downloadDataUrl, Icon, Swatch } from './ui'
 
 const Scene3D = lazy(() => import('./Scene3D'))
@@ -125,6 +126,7 @@ export default function MobileStudio({ onClose }: { onClose: () => void }) {
   const t = useT()
   const s = useStore()
   const all = useAllProducts()
+  const land = useMedia(PHONE_LANDSCAPE)
   const [cat, setCat] = useState<Cat>('tiles')
   const [sheet, setSheet] = useState<SheetKind>(null)
   const [preview, setPreview] = useState<string | null>(null)
@@ -194,7 +196,7 @@ export default function MobileStudio({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="ms">
+    <div className={`ms${land ? ' land' : ''}`}>
       <header className="ms-top">
         <button className="ms-icon" onClick={s.backToRooms} aria-label={t('Change room')} title={t('Change room')}>
           <Icon name="back" size={20} />

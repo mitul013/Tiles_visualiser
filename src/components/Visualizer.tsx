@@ -15,7 +15,7 @@ import { addCurrentToCatalog } from './Modals'
 import { BrandMark, downloadDataUrl, Icon, IconBtn, Swatch } from './ui'
 import { LANGUAGES, useT, type Lang } from '../lib/i18n'
 import { notifyHost } from '../lib/host'
-import { PHONE_PORTRAIT, useMedia } from '../lib/useMedia'
+import { PHONE_LANDSCAPE, PHONE_PORTRAIT, useMedia } from '../lib/useMedia'
 import MobileStudio from './MobileStudio'
 
 const Scene3D = lazy(() => import('./Scene3D'))
@@ -280,7 +280,9 @@ export default function Visualizer({ onClose }: { onClose: () => void }) {
   const [preview, setPreview] = useState<string | null>(null)
   const room = getRoom(roomId)
   const photo = photoRooms.find((r) => r.id === roomId)
-  const phone = useMedia(PHONE_PORTRAIT)
+  const portrait = useMedia(PHONE_PORTRAIT)
+  const sideways = useMedia(PHONE_LANDSCAPE)
+  const phone = portrait || sideways
 
   if (phone && view === 'visualizer' && (room || photo))
     return (

@@ -14,7 +14,7 @@ export default function SettingsPanel({ embedded = false }: { embedded?: boolean
   const applied = useStore((s) => s.applied)
   const apply = useStore((s) => s.apply)
   // on phones the panel starts folded so it does not cover the room
-  const [folded, setOpen] = useState(() => typeof window === 'undefined' || window.matchMedia('(min-width: 901px) and (min-height: 561px)').matches)
+  const [folded, setOpen] = useState(() => typeof window === 'undefined' || window.matchMedia('(min-width: 1281px) and (min-height: 561px)').matches)
   // inside the phone layout's bottom sheet: always open, no header
   const open = embedded || folded
 

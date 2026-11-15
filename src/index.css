@@ -3600,3 +3600,309 @@ input[type='range'] {
   border-radius: 999px;
   letter-spacing: 0.3px;
 }
+
+/* ================= phone on its side: room left, controls in a column on the right ================= */
+.ms.land {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) min(340px, 44vw);
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'stage top'
+    'stage opts'
+    'stage cats'
+    'stage rail'
+    'stage bottom';
+}
+.ms.land .ms-top {
+  grid-area: top;
+  padding: 4px calc(4px + env(safe-area-inset-right)) 4px 6px;
+  border-left: 1px solid var(--line);
+}
+.ms.land .ms-title b {
+  font-size: 13.5px;
+}
+.ms.land .ms-icon {
+  width: 34px;
+  height: 34px;
+}
+.ms.land .ms-stage {
+  grid-area: stage;
+  min-height: 0;
+  padding-left: env(safe-area-inset-left);
+}
+.ms.land .ms-stage .scene-wrap.photo,
+.ms.land .ms-original {
+  padding: 6px;
+}
+.ms.land .ms-stage.with-chips .scene-wrap.photo,
+.ms.land .ms-stage.with-chips .ms-original {
+  padding-bottom: 34px;
+}
+.ms.land .ms-fabs {
+  top: 10px;
+  right: 10px;
+}
+.ms.land .ms-fab {
+  width: 34px;
+  height: 34px;
+}
+.ms.land .ms-opts,
+.ms.land .ms-cats,
+.ms.land .ms-rail,
+.ms.land .ms-bottom {
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+}
+.ms.land .ms-opts {
+  grid-area: opts;
+  min-height: 0;
+  padding: 6px 8px 2px;
+  gap: 6px;
+}
+.ms.land .ms-chip {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+.ms.land .ms-chip.prod {
+  height: 36px;
+  max-width: 150px;
+}
+.ms.land .ms-chip.prod .swatch.mini,
+.ms.land .ms-chip.prod .mini-paint {
+  width: 28px;
+  height: 28px;
+}
+.ms.land .ms-hint {
+  font-size: 12px;
+  padding: 4px 2px;
+}
+.ms.land .ms-cats {
+  grid-area: cats;
+  padding: 2px 4px 0 8px;
+}
+.ms.land .ms-cats > button:not(.ms-icon) {
+  padding: 6px 8px;
+  font-size: 12px;
+}
+/* tiles: a scrolling grid instead of a sideways strip */
+.ms.land .ms-rail {
+  grid-area: rail;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+  align-content: start;
+  gap: 8px;
+  padding: 6px 8px 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-height: 0;
+  scroll-snap-type: none;
+}
+.ms.land .ms-card,
+.ms.land .ms-paint,
+.ms.land .ms-more {
+  width: auto;
+}
+.ms.land .ms-card-img,
+.ms.land .ms-more {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 12px;
+}
+.ms.land .ms-paint i {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+}
+.ms.land .ms-card b {
+  font-size: 11px;
+  margin-top: 4px;
+}
+.ms.land .ms-card small {
+  font-size: 9.5px;
+}
+.ms.land .ms-fav {
+  width: 24px;
+  height: 24px;
+}
+.ms.land .ms-empty {
+  grid-column: 1 / -1;
+}
+.ms.land .ms-bottom {
+  grid-area: bottom;
+  padding: 6px calc(8px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) 8px;
+  box-shadow: none;
+}
+.ms.land .ms-est b {
+  font-size: 14px;
+}
+.ms.land .ms-est small {
+  font-size: 10px;
+}
+.ms.land .ms-add {
+  height: 38px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+/* sheets slide in from the right, full height */
+.ms.land .ms-sheet-wrap {
+  justify-content: flex-end;
+  align-items: stretch;
+}
+.ms.land .ms-sheet,
+.ms.land .ms-sheet.tall {
+  width: min(420px, 62vw);
+  height: 100%;
+  max-height: 100%;
+  border-radius: 18px 0 0 18px;
+  padding-right: env(safe-area-inset-right);
+  animation: ms-left 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.ms.land .ms-sheet-head .handle {
+  display: none;
+}
+.ms.land .ms-sheet-head {
+  padding-top: 10px;
+}
+.ms.land .ms-menu {
+  grid-template-columns: repeat(3, 1fr);
+}
+@keyframes ms-left {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+/* ================= tablets on their side: keep the whole toolbar on screen ================= */
+@media (min-width: 901px) and (max-width: 1280px) {
+  .viz-head .head-actions .lbl,
+  .viz-head > .btn.ghost .lbl,
+  .viz-head .room-title {
+    display: none;
+  }
+  .viz-head .btn.ghost {
+    padding: 0 8px;
+  }
+  .viz-head .lang-select {
+    max-width: 92px;
+  }
+  .viz-head .toolbar {
+    gap: 0;
+  }
+}
+
+/* ================= room picker on a phone held sideways ================= */
+@media (max-height: 540px) and (orientation: landscape) {
+  .room-select {
+    padding: 14px 3vw 24px;
+  }
+  .room-select h1 {
+    font-size: 22px;
+    margin-bottom: 12px;
+  }
+  .tips {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .tip {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+  .tip small {
+    display: none;
+  }
+  .tip b {
+    font-size: 13px;
+  }
+  .room-grid {
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  }
+}
+@media (max-width: 640px) and (orientation: landscape) {
+  /* small phones on their side: the catalogue stays in the ⋯ menu */
+  .ms.land .ms-bottom .badge-wrap {
+    display: none;
+  }
+}
+
+/* large tablets held upright: the same studio, sized for the bigger screen */
+@media (min-width: 900px) and (orientation: portrait) {
+  .ms-top {
+    padding: 10px 12px;
+  }
+  .ms-title b {
+    font-size: 18px;
+  }
+  .ms-title small {
+    font-size: 12.5px;
+  }
+  .ms-chip {
+    height: 44px;
+    font-size: 14px;
+    padding: 0 16px;
+  }
+  .ms-chip.prod {
+    height: 50px;
+    max-width: 240px;
+  }
+  .ms-chip.prod .swatch.mini {
+    width: 40px;
+    height: 40px;
+  }
+  .ms-chip.prod b {
+    font-size: 14px;
+  }
+  .ms-hint {
+    font-size: 15px;
+  }
+  .ms-surfaces button {
+    font-size: 13px;
+    padding: 6px 14px;
+  }
+  .ms-cats > button:not(.ms-icon) {
+    font-size: 15px;
+    padding: 8px 14px;
+  }
+  .ms-card,
+  .ms-card-img,
+  .ms-more {
+    width: 150px;
+  }
+  .ms-card-img,
+  .ms-more {
+    height: 150px;
+  }
+  .ms-rail {
+    min-height: 205px;
+    gap: 14px;
+  }
+  .ms-card b {
+    font-size: 13.5px;
+  }
+  .ms-card small {
+    font-size: 11.5px;
+  }
+  .surf-pin {
+    font-size: 11.5px;
+  }
+  .surf-pin.on {
+    font-size: 12.5px;
+  }
+  .ms-est small {
+    font-size: 12.5px;
+  }
+  .ms-est b {
+    font-size: 21px;
+  }
+  .ms-add {
+    height: 52px;
+    font-size: 16px;
+    padding: 0 22px;
+  }
+  .ms-fab {
+    width: 44px;
+    height: 44px;
+  }
+}
