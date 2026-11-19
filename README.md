@@ -71,9 +71,18 @@ node scripts/library-photos.cjs rooms.json   # rooms.json: [{ "id", "name", "cat
 
 The script resizes each photo, detects it (large model if `server/models/room-seg-large.onnx` exists),
 tidies small wall pieces (kitchens get one merged backsplash) and adds it to `manifest.json`.
-`node scripts/library-photos.cjs --tidy` re-runs only the clean-up. Rooms with prepared matt / glossy
-cut-outs can still be added to the manifest by hand. The old 3D rooms remain in the code for saved designs
-but are no longer listed.
+`node scripts/library-photos.cjs --tidy` re-runs only the clean-up. The old 3D rooms remain in the code
+for saved designs but are no longer listed.
+
+Rooms with prepared matt / glossy cut-outs (tile surfaces transparent, shadows baked in):
+
+```bash
+node scripts/library-cutouts.cjs <rooms dir> [category]   # <rooms dir>/<id> - <name>/{original,matt,glossy,thumbnail}.webp
+```
+
+Folders without all three of original, matt and glossy are skipped. The detector gives each surface its
+perspective and real size; surfaces that are not a hole in the cut-out are dropped. Rooms are listed
+after the existing cut-out rooms.
 
 ## Run
 
