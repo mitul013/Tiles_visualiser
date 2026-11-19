@@ -1,0 +1,44 @@
+# Whole app on one server: web app + HTTPS (Caddy) and the room-detection backend.
+#
+#   cd deploy
+#   SITE_ADDRESS=tiles.example.com docker compose up -d --build     # with a domain: HTTPS
+#   docker compose up -d --build                                     # no domain: http://<server-ip>
+#
+# See docs/DEPLOY-ORACLE.md for a full walkthrough on Oracle Cloud's free tier.
+services:
+  detect:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      secrets: [ca]
+    restart: unless-stopped
+    environment:
+      DETECT_ORIGIN: "*"
+    expose: ["7860"]
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+      secrets: [ca]
+    restart: unless-stopped
+    depends_on: [detect]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+# only needed behind a TLS-inspecting proxy: copy its certificate into deploy/ and
+#   CA_CERT=./proxy-ca.crt docker compose build   (no-ca.crt is an empty placeholder)
+secrets:
+  ca:
+    file: ${CA_CERT:-./no-ca.crt}
+
+volumes:
+  caddy_data:
+  caddy_config:

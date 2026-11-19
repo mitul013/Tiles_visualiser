@@ -1,3 +1,4 @@
+import { brand, logoUrl } from '../lib/brand'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Product } from '../types'
 import { getSwatch } from '../lib/tileArt'
@@ -35,8 +36,12 @@ const paths: Record<string, string> = {
   qr: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z',
   link: 'M10 14a5 5 0 007 0l3-3a5 5 0 00-7-7l-1 1M14 10a5 5 0 00-7 0l-3 3a5 5 0 007 7l1-1',
   pdf: 'M6 3h9l5 5v13H6zM14 3v6h6',
+  whatsapp: 'M3.5 20.5l1.3-4.2A8.5 8.5 0 1112 20.5a8.4 8.4 0 01-4.3-1.2zM9 8.5c0 3.5 2.6 6.5 6.3 6.5l1.2-1.3-1.8-1-.9.8a4.6 4.6 0 01-2.7-2.7l.8-.9-1-1.8z',
   eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 100 6 3 3 0 000-6z',
   home: 'M3 11l9-8 9 8M5 9v12h14V9',
+  dots: 'M4.5 12a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M10.5 12a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0M16.5 12a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0',
+  rotate: 'M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5',
+  sparkle: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z',
 }
 
 export function Icon({ name, size = 18 }: { name: keyof typeof paths | string; size?: number }) {
@@ -57,17 +62,19 @@ export function IconBtn({ icon, label, onClick, active, badge, disabled }: { ico
   )
 }
 
-export function Modal({ title, onClose, children, wide, footer }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean | 'xl'; footer?: ReactNode }) {
+export function Modal({ title, onClose, children, wide, footer, full, headerExtra }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean | 'xl'; footer?: ReactNode; /** fill the whole screen */ full?: boolean; headerExtra?: ReactNode }) {
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', k)
     return () => window.removeEventListener('keydown', k)
   }, [onClose])
   return (
-    <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal${wide === 'xl' ? ' xl' : wide ? ' wide' : ''}`} role="dialog" aria-label={title}>
+    <div className={`modal-back${full ? ' full' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className={`modal${wide === 'xl' ? ' xl' : wide ? ' wide' : ''}${full ? ' full' : ''}`} role="dialog" aria-label={title}>
         <header>
           <h3>{title}</h3>
+          <span className="grow" />
+          {headerExtra}
           <button className="x" onClick={onClose} aria-label="Close">
             <Icon name="close" />
           </button>
@@ -127,4 +134,24 @@ export function downloadDataUrl(url: string, filename: string) {
   a.href = url
   a.download = filename
   a.click()
+}
+
+/** the shop's logo (or the default mark) and name, from public/brand.json */
+export function BrandMark() {
+  const url = logoUrl()
+  return (
+    <div className="brand">
+      {url ? (
+        // a logo usually carries the shop's name already: show it alone
+        <img className="brand-logo" src={url} alt={brand.name} title={brand.name} />
+      ) : (
+        <>
+          <span className="logo">
+            <Icon name="grid" size={18} />
+          </span>
+          {brand.name}
+        </>
+      )}
+    </div>
+  )
 }

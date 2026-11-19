@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Room detection</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 0; background: #f4f2ee; color: #1b2226; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p { margin: 0 0 14px; color: #555; }
+  label.pick { display: inline-block; background: #01212c; color: #fff; padding: 10px 16px; border-radius: 10px; cursor: pointer; font-weight: 600; }
+  #status { margin: 12px 0; min-height: 22px; }
+  .wrap { position: relative; display: none; }
+  .wrap img, .wrap canvas { width: 100%; display: block; border-radius: 10px; }
+  .wrap canvas { position: absolute; inset: 0; }
+  ul { padding-left: 18px; }
+  code { background: #e8e5df; padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Room detection service</h1>
+  <p>Upload a room photo: floor, walls (split at corners), ceiling and every object in front of them are detected, with each surface's real size. This page is a demo of the API the Tiles Visualiser calls.</p>
+  <label class="pick">Choose a room photo<input id="file" type="file" accept="image/*" hidden /></label>
+  <div id="status"></div>
+  <div class="wrap" id="wrap"><img id="photo" alt="room" /><canvas id="ov"></canvas></div>
+  <ul id="list"></ul>
+  <p>API: <code>POST /detect</code> with the image bytes, <code>GET /health</code>.</p>
+</main>
+<script>
+const COLORS = { floor: '#ff8a3d', ceiling: '#00b5c8', wall: ['#1e88ff', '#c04cf0', '#2bb673', '#e0b000', '#ff4d6d'] }
+const $ = (id) => document.getElementById(id)
+$('file').onchange = async (e) => {
+  const f = e.target.files[0]
+  if (!f) return
+  $('list').innerHTML = ''
+  $('wrap').style.display = 'none'
+  const t = Date.now()
+  const tick = setInterval(() => ($('status').textContent = `Detecting… ${Math.round((Date.now() - t) / 1000)} s (about 30 s on the free CPU; longer if the Space was asleep)`), 500)
+  try {
+    const r = await fetch('detect', { method: 'POST', headers: { 'Content-Type': f.type || 'image/jpeg' }, body: f })
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status)
+    const d = await r.json()
+    $('photo').src = URL.createObjectURL(f)
+    await $('photo').decode()
+    const cv = $('ov'); cv.width = d.width; cv.height = d.height
+    const ctx = cv.getContext('2d')
+    const m = new Image(); m.src = d.objMask; await m.decode()
+    // object layer in pink
+    const tmp = document.createElement('canvas'); tmp.width = d.width; tmp.height = d.height
+    const tc = tmp.getContext('2d'); tc.drawImage(m, 0, 0, d.width, d.height)
+    const px = tc.getImageData(0, 0, d.width, d.height)
+    for (let i = 0; i < px.data.length; i += 4) { const a = px.data[i]; px.data[i] = 255; px.data[i + 1] = 40; px.data[i + 2] = 120; px.data[i + 3] = a * 0.5 }
+    ctx.putImageData(px, 0, 0)
+    let wi = 0
+    for (const s of d.surfaces) {
+      const col = s.type === 'wall' ? COLORS.wall[wi++ % 5] : COLORS[s.type]
+      ctx.beginPath(); s.area.forEach(([x, y], i) => (i ? ctx.lineTo(x * d.width, y * d.height) : ctx.moveTo(x * d.width, y * d.height))); ctx.closePath()
+      ctx.fillStyle = col + '33'; ctx.fill(); ctx.lineWidth = Math.max(2, d.width / 400); ctx.strokeStyle = col; ctx.stroke()
+      const li = document.createElement('li'); li.innerHTML = `<b style="color:${col}">${s.label}</b>: ${(s.cover * 100).toFixed(1)}% of the photo`; $('list').appendChild(li)
+    }
+    $('wrap').style.display = 'block'
+    $('status').textContent = `Done in ${Math.round((Date.now() - t) / 1000)} s. Pink = objects kept on top of the tiles.`
+  } catch (err) {
+    $('status').textContent = 'Detection failed: ' + err.message
+  } finally { clearInterval(tick) }
+}
+</script>
+</body>
+</html>

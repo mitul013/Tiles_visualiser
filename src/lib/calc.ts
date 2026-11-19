@@ -1,4 +1,5 @@
 import type { Product } from '../types'
+import { formatMoney } from './brand'
 
 export const M2_TO_FT2 = 10.7639
 
@@ -23,4 +24,5 @@ export function calculate(product: Product, areaM2: number, wastePct = 10, grout
   return { area: areaM2, areaWithWaste, tiles, boxes, boxArea, cost: boxes * boxArea * product.price }
 }
 
-export const money = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+/** a price in the shop's currency (public/brand.json) */
+export const money = (n: number) => formatMoney(n)

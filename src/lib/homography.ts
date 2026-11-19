@@ -80,24 +80,67 @@ function drawTri(ctx: CanvasRenderingContext2D, img: CanvasImageSource, d: Pt[],
 }
 
 /** Perspective-map `img` onto quad `q` (in destination pixel coords) by subdividing into triangles. */
-export function drawPerspective(ctx: CanvasRenderingContext2D, img: HTMLCanvasElement, q: Pt[], steps = 22) {
+/**
+ * Smaller copies of a texture (½, ¼, ⅛…), each filtered from the one before: far-away parts of a
+ * surface are drawn from the copy that matches their size on screen, so tiny tiles stay clean
+ * instead of breaking into noise (canvas 2D has no mipmaps of its own).
+ */
+const mipCache = new WeakMap<HTMLCanvasElement, HTMLCanvasElement[]>()
+function mipLevels(img: HTMLCanvasElement) {
+  let levels = mipCache.get(img)
+  if (levels) return levels
+  levels = [img]
+  let cur = img
+  while (cur.width > 8 && cur.height > 8 && levels.length < 9) {
+    const c = document.createElement('canvas')
+    c.width = Math.max(1, Math.round(cur.width / 2))
+    c.height = Math.max(1, Math.round(cur.height / 2))
+    const x = c.getContext('2d')!
+    x.imageSmoothingEnabled = true
+    x.imageSmoothingQuality = 'high'
+    x.drawImage(cur, 0, 0, c.width, c.height)
+    levels.push(c)
+    cur = c
+  }
+  mipCache.set(img, levels)
+  return levels
+}
+
+/** `pxScale`: device pixels per unit of q (when drawing into a supersampled canvas) */
+export function drawPerspective(ctx: CanvasRenderingContext2D, img: HTMLCanvasElement, q: Pt[], steps = 22, pxScale = 1) {
   const H = squareToQuad(q)
   const iw = img.width
   const ih = img.height
+  const levels = mipLevels(img)
   const grid: Pt[][] = []
   for (let j = 0; j <= steps; j++) {
     const row: Pt[] = []
     for (let i = 0; i <= steps; i++) row.push(applyH(H, i / steps, j / steps))
     grid.push(row)
   }
+  const area = (a: Pt, b: Pt, c: Pt) => Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])) / 2
+  const texelArea = (iw / steps) * (ih / steps)
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
   for (let j = 0; j < steps; j++)
     for (let i = 0; i < steps; i++) {
-      const u0 = (i / steps) * iw
-      const u1 = ((i + 1) / steps) * iw
-      const v0 = (j / steps) * ih
-      const v1 = ((j + 1) / steps) * ih
-      drawTri(ctx, img, [grid[j][i], grid[j][i + 1], grid[j + 1][i + 1]], [[u0, v0], [u1, v0], [u1, v1]])
-      drawTri(ctx, img, [grid[j][i], grid[j + 1][i + 1], grid[j + 1][i]], [[u0, v0], [u1, v1], [u0, v1]])
+      const a = grid[j][i]
+      const b = grid[j][i + 1]
+      const c = grid[j + 1][i + 1]
+      const d = grid[j + 1][i]
+      const px = area(a, b, c) + area(a, c, d)
+      // texels per screen pixel → level (a little on the sharp side)
+      const ratio = Math.sqrt(texelArea / Math.max(px * pxScale * pxScale, 1e-3)) * 0.9
+      const L = Math.max(0, Math.min(levels.length - 1, Math.floor(Math.log2(Math.max(1, ratio)))))
+      const src = levels[L]
+      const sx = src.width / iw
+      const sy = src.height / ih
+      const u0 = (i / steps) * iw * sx
+      const u1 = ((i + 1) / steps) * iw * sx
+      const v0 = (j / steps) * ih * sy
+      const v1 = ((j + 1) / steps) * ih * sy
+      drawTri(ctx, src, [a, b, c], [[u0, v0], [u1, v0], [u1, v1]])
+      drawTri(ctx, src, [a, c, d], [[u0, v0], [u1, v1], [u0, v1]])
     }
 }
 
@@ -187,4 +230,52 @@ export const polyPath = (ctx: CanvasRenderingContext2D, poly: Pt[]) => {
   ctx.beginPath()
   poly.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)))
   ctx.closePath()
+}
+
+/**
+ * Real area (m²) of a photo-room surface: its outline, clipped to the photo frame, mapped through
+ * the inverse of the perspective guide onto the plane, where the guide quad is a `size[0]` x
+ * `size[1]` metre rectangle. Parts hidden behind furniture count (they get tiled too); parts outside
+ * the photo cannot be measured and do not. Returns null when the outline cannot be mapped.
+ */
+export function surfaceAreaM2(quad: Pt[], outline: Pt[], size: [number, number]): number | null {
+  // Sutherland–Hodgman against the photo frame [0,1]²
+  let poly = outline
+  const edges: [(p: Pt) => boolean, (a: Pt, b: Pt) => Pt][] = [
+    [(p) => p[0] >= 0, (a, b) => [0, a[1] + ((b[1] - a[1]) * (0 - a[0])) / (b[0] - a[0])]],
+    [(p) => p[0] <= 1, (a, b) => [1, a[1] + ((b[1] - a[1]) * (1 - a[0])) / (b[0] - a[0])]],
+    [(p) => p[1] >= 0, (a, b) => [a[0] + ((b[0] - a[0]) * (0 - a[1])) / (b[1] - a[1]), 0]],
+    [(p) => p[1] <= 1, (a, b) => [a[0] + ((b[0] - a[0]) * (1 - a[1])) / (b[1] - a[1]), 1]],
+  ]
+  for (const [inside, cut] of edges) {
+    const out: Pt[] = []
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i]
+      const b = poly[(i + 1) % poly.length]
+      if (inside(b)) {
+        if (!inside(a)) out.push(cut(a, b))
+        out.push(b)
+      } else if (inside(a)) out.push(cut(a, b))
+    }
+    poly = out
+    if (poly.length < 3) return null
+  }
+  const Hi = invert3(squareToQuad(quad))
+  const uv: Pt[] = []
+  for (const [x, y] of poly) {
+    const w = Hi[6] * x + Hi[7] * y + Hi[8]
+    if (!(w > 1e-9) && !(w < -1e-9)) return null
+    uv.push([(Hi[0] * x + Hi[1] * y + Hi[2]) / w, (Hi[3] * x + Hi[4] * y + Hi[5]) / w])
+  }
+  // all points must be on the same side of the horizon (in front of the camera)
+  const ws = poly.map(([x, y]) => Hi[6] * x + Hi[7] * y + Hi[8])
+  if (!(ws.every((w) => w > 0) || ws.every((w) => w < 0))) return null
+  let a = 0
+  for (let i = 0; i < uv.length; i++) {
+    const [x1, y1] = uv[i]
+    const [x2, y2] = uv[(i + 1) % uv.length]
+    a += x1 * y2 - x2 * y1
+  }
+  const m2 = (Math.abs(a) / 2) * size[0] * size[1]
+  return isFinite(m2) && m2 > 0 ? m2 : null
 }

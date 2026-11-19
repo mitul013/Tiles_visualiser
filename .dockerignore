@@ -1,0 +1,10 @@
+node_modules
+dist
+test-fixtures
+detect-out
+model-export
+.git
+.github
+.claude
+public/library
+public/rooms

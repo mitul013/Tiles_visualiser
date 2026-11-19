@@ -8,11 +8,15 @@ import type { Application, LightTheme, SurfaceType } from '../types'
 import ProductPanel from './ProductPanel'
 import SettingsPanel from './SettingsPanel'
 import PhotoScene from './PhotoScene'
+import PanoScene from './PanoScene'
+import Preview from './Preview'
 import RoomSelect from './RoomSelect'
 import { addCurrentToCatalog } from './Modals'
-import { downloadDataUrl, Icon, IconBtn, Swatch } from './ui'
+import { BrandMark, downloadDataUrl, Icon, IconBtn, Swatch } from './ui'
 import { LANGUAGES, useT, type Lang } from '../lib/i18n'
 import { notifyHost } from '../lib/host'
+import { PHONE_LANDSCAPE, PHONE_PORTRAIT, useMedia } from '../lib/useMedia'
+import MobileStudio from './MobileStudio'
 
 const Scene3D = lazy(() => import('./Scene3D'))
 
@@ -69,7 +73,7 @@ function Toolbar({ rootRef }: { rootRef: React.RefObject<HTMLDivElement | null> 
       <IconBtn icon="reset" label={t('Reset')} onClick={s.reset} />
       <IconBtn icon="shuffle" label={t('Random')} onClick={randomDesign} />
       <IconBtn icon="compare" label={t('Compare')} onClick={() => s.setModal('compare')} />
-      {!room && s.photoRooms.some((r) => r.id === s.roomId) && <IconBtn icon="layers" label={t('Surfaces')} onClick={() => s.editSurfaces(s.roomId)} />}
+      {!room && s.photoRooms.some((r) => r.id === s.roomId && !r.pano) && <IconBtn icon="layers" label={t('Surfaces')} onClick={() => s.editSurfaces(s.roomId)} />}
       {room && <IconBtn icon="pano" label="360°" active={s.panorama} onClick={s.togglePanorama} />}
       <div className="menu-wrap">
         <IconBtn icon="sun" label={t('Lighting')} active={menu === 'theme'} onClick={() => setMenu(menu === 'theme' ? null : 'theme')} />
@@ -236,7 +240,7 @@ function AppliedBar() {
   }
   const area = selected.reduce((sum, id) => {
     const s = surfaces.find((x) => x.id === id)
-    return sum + (s ? s.size[0] * s.size[1] : 0)
+    return sum + (s ? s.area : 0)
   }, 0)
   return (
     <div className="applied-bar">
@@ -272,29 +276,36 @@ export default function Visualizer({ onClose }: { onClose: () => void }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const t = useT()
   const lang = useStore((s) => s.lang)
+  /** snapshot of the room shown full screen (null = closed) */
+  const [preview, setPreview] = useState<string | null>(null)
   const room = getRoom(roomId)
   const photo = photoRooms.find((r) => r.id === roomId)
+  const portrait = useMedia(PHONE_PORTRAIT)
+  const sideways = useMedia(PHONE_LANDSCAPE)
+  const phone = portrait || sideways
+
+  if (phone && view === 'visualizer' && (room || photo))
+    return (
+      <div className={`viz${dark ? ' dark' : ''}`} ref={rootRef}>
+        <MobileStudio onClose={onClose} />
+      </div>
+    )
 
   return (
     <div className={`viz${dark ? ' dark' : ''}`} ref={rootRef}>
       <header className="viz-head">
-        <div className="brand">
-          <span className="logo">
-            <Icon name="grid" size={18} />
-          </span>
-          Tiles Visualiser
-        </div>
+        <BrandMark />
         {view === 'visualizer' && (
           <>
             <button className="btn ghost" onClick={backToRooms}>
-              <Icon name="back" /> {t('Change room')}
+              <Icon name="back" /> <span className="lbl">{t('Change room')}</span>
             </button>
             <div className="head-actions">
               <button className="btn sm" onClick={() => useStore.getState().setModal('inquiry')}>
-                <Icon name="info" size={15} /> {t('Get in touch')}
+                <Icon name="info" size={15} /> <span className="lbl">{t('Get in touch')}</span>
               </button>
               <button className="btn sm primary" onClick={addCurrentToCatalog}>
-                <Icon name="plus" size={15} /> {t('Add to Selection')}
+                <Icon name="plus" size={15} /> <span className="lbl">{t('Add to Selection')}</span>
               </button>
             </div>
             <span className="room-title">{roomName(roomId)}</span>
@@ -326,15 +337,28 @@ export default function Visualizer({ onClose }: { onClose: () => void }) {
                   <Scene3D room={room} />
                 </Suspense>
               ) : (
-                photo && <PhotoScene room={photo} />
+                photo && (photo.pano ? <PanoScene room={photo} /> : <PhotoScene room={photo} />)
               )}
               <SettingsPanel />
+              {!panorama && (
+                <button
+                  className="preview-btn"
+                  onClick={() => {
+                    const url = useStore.getState().capture?.(true)
+                    if (url) setPreview(url)
+                  }}
+                  title="See the room full screen"
+                >
+                  <Icon name="full" size={16} /> Preview
+                </button>
+              )}
               {panorama && room && <div className="pano-hint">360° view · drag to look around</div>}
             </div>
             <AppliedBar />
           </div>
         </div>
       )}
+      {preview && <Preview src={preview} onClose={() => setPreview(null)} />}
     </div>
   )
 }
